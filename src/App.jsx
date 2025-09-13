@@ -1,205 +1,1195 @@
-import { useState, useEffect, useRef } from 'react';
+// import { useEffect, useState, useRef } from "react";
+// import * as signalR from "@microsoft/signalr";
+// import "./App.css";
+
+// export default function App() {
+//   const [jwt, setJwt] = useState("");
+//   const [userId, setUserId] = useState("");
+//   const [recipientId, setRecipientId] = useState("");
+//   const [message, setMessage] = useState("");
+//   const [connection, setConnection] = useState(null);
+//   const [messages, setMessages] = useState([]);
+//   const [connected, setConnected] = useState(false);
+//   const [conversations, setConversations] = useState([]);
+//   const [selectedConversation, setSelectedConversation] = useState(null);
+//   const [showConversations, setShowConversations] = useState(false);
+//   const [conversationMessages, setConversationMessages] = useState([]);
+//   const [loadingConversations, setLoadingConversations] = useState(false);
+//   const [loadingMessages, setLoadingMessages] = useState(false);
+//   const messagesEndRef = useRef(null);
+
+//   useEffect(() => {
+//     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+//     console.log("Message state: ", messages);
+//   }, [messages]);
+
+//   const postReceipt = async (endpoint, body) => {
+//     try {
+//       console.log("Endpoint of send/read api:", endpoint);
+//       console.log("Body of send/read api:", body);
+//       const res = await fetch(`http://localhost:4002/chat/${endpoint}`, {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//           Authorization: `Bearer ${jwt}`,
+//         },
+//         body: JSON.stringify(body),
+//       });
+//       const data = await res.json();
+//       console.log("Getting on read:", data);
+//       if (!res.ok) {
+//         console.log("GETTING INTO THIS BLOCK");
+//         console.warn(`${endpoint} request failed`, data);
+//       }
+//       return data;
+//     } catch (err) {
+//       console.error(`❌ ${endpoint} error:`, err);
+//       return null;
+//     }
+//   };
+
+//   const updateMessageById = (messageId, patch) => {
+//     setMessages((prev) =>
+//       prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+//     );
+//   };
+
+//   // NEW API: Get all conversations for the user
+//   const fetchConversations = async () => {
+//     try {
+//       setLoadingConversations(true);
+//       console.log("🔄 Fetching conversations for user:", userId);
+
+//       const res = await fetch(
+//         `http://localhost:4002/chat/conversations?page=1&limit=20`,
+//         {
+//           method: "GET",
+//           headers: { Authorization: `Bearer ${jwt}` },
+//         }
+//       );
+
+//       const data = await res.json();
+//       console.log("✅ Conversations response:", data);
+
+//       if (data.success) {
+//         setConversations(data.conversations);
+//         setShowConversations(true);
+//       } else {
+//         throw new Error(data.error || "Failed to fetch conversations");
+//       }
+//     } catch (err) {
+//       console.error("❌ Fetch conversations error:", err);
+//       alert("❌ Failed to fetch conversations");
+//     } finally {
+//       setLoadingConversations(false);
+//     }
+//   };
+
+//   // NEW API: Get messages between two users
+//   const fetchConversationMessages = async (otherUserId) => {
+//     try {
+//       setLoadingMessages(true);
+//       console.log("🔄 Fetching messages between:", userId, "and", otherUserId);
+
+//       const res = await fetch(
+//         `http://localhost:4002/chat/messages?otherUserId=${otherUserId}&page=1&limit=50`,
+//         {
+//           method: "GET",
+//           headers: { Authorization: `Bearer ${jwt}` },
+//         }
+//       );
+
+//       const data = await res.json();
+//       console.log("✅ Messages response:", data);
+
+//       if (data.success) {
+//         // Reverse the order since API returns newest first, but we want oldest first for display
+//         const messagesOldestFirst = data.messages.reverse();
+//         setConversationMessages(messagesOldestFirst);
+//         setSelectedConversation(otherUserId);
+//       } else {
+//         throw new Error(data.error || "Failed to fetch messages");
+//       }
+//     } catch (err) {
+//       console.error("❌ Fetch messages error:", err);
+//       alert("❌ Failed to fetch messages");
+//     } finally {
+//       setLoadingMessages(false);
+//     }
+//   };
+
+//   const connectToSignalR = async () => {
+//     try {
+//       const res = await fetch("http://localhost:4002/negotiate", {
+//         method: "GET",
+//         headers: { Authorization: `Bearer ${jwt}` },
+//       });
+//       console.log("Negotiate api response:", res);
+//       if (!res.ok) throw new Error("Negotiate failed");
+//       const { url, accessToken } = await res.json();
+//       const newConnection = new signalR.HubConnectionBuilder()
+//         .withUrl(url, {
+//           accessTokenFactory: () => accessToken,
+//         })
+//         .withAutomaticReconnect()
+//         .configureLogging(signalR.LogLevel.Information)
+//         .build();
+
+//       newConnection.on("newMessage", async (msg) => {
+//         console.log("📥 Received newMessage:", msg);
+//         const incomingMsg = {
+//           ...msg,
+//           incoming: true,
+//           status: msg.status || "sent",
+//         };
+//         setMessages((prev) => [...prev, incomingMsg]);
+
+//         if (incomingMsg.messageId) {
+//           console.log("DELIVERD BLOCK DATA", incomingMsg);
+//           postReceipt("delivered", {
+//             messageId: incomingMsg.messageId,
+//             recipientId: userId,
+//           }).catch((e) =>
+//             console.warn("Failed to post delivered receipt (non-fatal):", e)
+//           );
+//           updateMessageById(incomingMsg.messageId, {
+//             status: "delivered",
+//             deliveredAt: new Date().toISOString(),
+//           });
+//         }
+//       });
+
+//       newConnection.on("messageReceipt", (receipt) => {
+//         console.log("📣 Received messageReceipt:", receipt);
+//         if (!receipt || !receipt.messageId) return;
+//         updateMessageById(receipt.messageId, {
+//           status: receipt.status,
+//           ...(receipt.timestamp ? { statusAt: receipt.timestamp } : {}),
+//         });
+//       });
+
+//       await newConnection.start();
+//       setConnection(newConnection);
+//       setConnected(true);
+//       alert("✅ Connected to SignalR!");
+//     } catch (err) {
+//       console.error("❌ Connection error:", err);
+//       alert("❌ Failed to connect to SignalR.");
+//     }
+//   };
+
+//   const sendMessage = async () => {
+//     try {
+//       const res = await fetch("http://localhost:4002/chat/send", {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//           Authorization: `Bearer ${jwt}`,
+//         },
+//         body: JSON.stringify({ recipientId, content: message }),
+//       });
+//       const data = await res.json();
+//       console.log("Send response:", data);
+//       if (data.success) {
+//         const outgoing = {
+//           ...data.message,
+//           incoming: false,
+//           status: data.message?.status || "sent",
+//         };
+//         setMessages((prev) => [...prev, outgoing]);
+//         setMessage("");
+//       } else {
+//         throw new Error(data.error || "Failed to send");
+//       }
+//     } catch (err) {
+//       console.error("❌ Send error:", err);
+//       alert("❌ Failed to send message");
+//     }
+//   };
+
+//   const handleIncomingClick = async (msg) => {
+//     if (!msg || !msg.messageId) return;
+//     if (msg.status === "read") return;
+//     updateMessageById(msg.messageId, {
+//       status: "read",
+//       readAt: new Date().toISOString(),
+//     });
+//     await postReceipt("read", {
+//       messageId: msg.messageId,
+//       recipientId: userId,
+//     });
+//   };
+
+//   const renderStatus = (m) => {
+//     const s = m.status || "sent";
+//     if (m.incoming) {
+//       if (s === "read") return <span className="text-xs">👁 read</span>;
+//       if (s === "delivered")
+//         return <span className="text-xs">✓ delivered</span>;
+//       return <span className="text-xs">• sent</span>;
+//     } else {
+//       if (s === "read") return <span className="text-xs">👁 read</span>;
+//       if (s === "delivered")
+//         return <span className="text-xs">✓ delivered</span>;
+//       return <span className="text-xs">• sent</span>;
+//     }
+//   };
+
+//   const formatTime = (timestamp) => {
+//     return new Date(timestamp).toLocaleTimeString();
+//   };
+
+//   const formatDate = (timestamp) => {
+//     return new Date(timestamp).toLocaleDateString();
+//   };
+
+//   return (
+//     <div className="min-h-screen bg-gray-100 p-4">
+//       <div className="max-w-4xl mx-auto bg-white shadow p-6 rounded">
+//         <h1 className="text-2xl font-bold mb-4">
+//           🔗 SignalR Chat Tester (with receipts)
+//         </h1>
+
+//         {!connected ? (
+//           <>
+//             <div className="mb-4">
+//               <label className="block text-sm font-medium mb-1">
+//                 🔐 JWT Token
+//               </label>
+//               <textarea
+//                 rows={3}
+//                 className="w-full border rounded px-3 py-2"
+//                 value={jwt}
+//                 onChange={(e) => setJwt(e.target.value)}
+//               />
+//             </div>
+//             <button
+//               onClick={connectToSignalR}
+//               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+//             >
+//               Connect
+//             </button>
+//           </>
+//         ) : (
+//           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+//             {/* Left Panel - Controls and Chat List */}
+//             <div className="lg:col-span-1 space-y-6">
+//               {/* User Controls */}
+//               <div className="space-y-4 p-4 bg-gray-50 rounded">
+//                 <div>
+//                   <label className="block text-sm font-medium mb-1">
+//                     👤 Your User ID
+//                   </label>
+//                   <input
+//                     className="w-full border rounded px-3 py-2"
+//                     value={userId}
+//                     onChange={(e) => setUserId(e.target.value)}
+//                   />
+//                 </div>
+//                 <div>
+//                   <label className="block text-sm font-medium mb-1">
+//                     🎯 Recipient ID
+//                   </label>
+//                   <input
+//                     className="w-full border rounded px-3 py-2"
+//                     value={recipientId}
+//                     onChange={(e) => setRecipientId(e.target.value)}
+//                   />
+//                 </div>
+//                 <div>
+//                   <label className="block text-sm font-medium mb-1">
+//                     💬 Message
+//                   </label>
+//                   <input
+//                     className="w-full border rounded px-3 py-2"
+//                     value={message}
+//                     onChange={(e) => setMessage(e.target.value)}
+//                     onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+//                   />
+//                 </div>
+//                 <button
+//                   onClick={sendMessage}
+//                   className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+//                 >
+//                   Send Message
+//                 </button>
+//               </div>
+
+//               {/* New Chat List Feature */}
+//               <div className="p-4 bg-gray-50 rounded">
+//                 <div className="flex justify-between items-center mb-4">
+//                   <h3 className="text-lg font-semibold">💬 Chat List</h3>
+//                   <button
+//                     onClick={fetchConversations}
+//                     disabled={loadingConversations || !userId}
+//                     className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 disabled:bg-gray-400"
+//                   >
+//                     {loadingConversations ? "Loading..." : "Refresh"}
+//                   </button>
+//                 </div>
+
+//                 {showConversations && (
+//                   <div className="max-h-64 overflow-y-auto space-y-2">
+//                     {conversations.length === 0 ? (
+//                       <p className="text-gray-500 text-sm">
+//                         No conversations found
+//                       </p>
+//                     ) : (
+//                       conversations.map((conv) => (
+//                         <div
+//                           key={conv.conversationId}
+//                           onClick={() =>
+//                             fetchConversationMessages(conv.otherUser?.userId)
+//                           }
+//                           className={`p-3 border rounded cursor-pointer hover:bg-blue-50 ${
+//                             selectedConversation === conv.otherUser?.userId
+//                               ? "bg-blue-100 border-blue-300"
+//                               : "bg-white"
+//                           }`}
+//                         >
+//                           <div className="flex justify-between items-start">
+//                             <div className="flex-1">
+//                               <div className="font-medium text-sm">
+//                                 {conv.otherUser?.firstName}{" "}
+//                                 {conv.otherUser?.lastName}
+//                               </div>
+//                               <div className="text-xs text-gray-500">
+//                                 @{conv.otherUser?.username}
+//                               </div>
+//                               {conv.lastMessage && (
+//                                 <div className="text-xs text-gray-600 mt-1 truncate">
+//                                   {conv.lastMessage.content}
+//                                 </div>
+//                               )}
+//                             </div>
+//                             <div className="text-xs text-gray-400 ml-2">
+//                               {formatTime(conv.lastActivityAt)}
+//                             </div>
+//                           </div>
+//                         </div>
+//                       ))
+//                     )}
+//                   </div>
+//                 )}
+//               </div>
+//             </div>
+
+//             {/* Right Panel - Messages */}
+//             <div className="lg:col-span-2">
+//               {/* Selected Conversation Messages */}
+//               {selectedConversation && (
+//                 <div className="mb-6 p-4 bg-blue-50 rounded">
+//                   <h3 className="text-lg font-semibold mb-2">
+//                     📨 Messages with {selectedConversation}
+//                   </h3>
+//                   {loadingMessages ? (
+//                     <p className="text-gray-500">Loading messages...</p>
+//                   ) : (
+//                     <div className="max-h-64 overflow-y-auto space-y-2 bg-white p-3 rounded">
+//                       {conversationMessages.length === 0 ? (
+//                         <p className="text-gray-500 text-sm">
+//                           No messages found
+//                         </p>
+//                       ) : (
+//                         conversationMessages.map((msg, i) => (
+//                           <div
+//                             key={i}
+//                             className={`p-3 rounded shadow text-sm ${
+//                               msg.senderId === userId
+//                                 ? "bg-blue-500 text-white text-right ml-auto max-w-xs"
+//                                 : "bg-gray-200 text-left max-w-xs"
+//                             }`}
+//                           >
+//                             <div>{msg.content}</div>
+//                             <div className="flex items-center justify-between mt-1">
+//                               <div className="text-xs opacity-70">
+//                                 {formatTime(msg.createdAt)}
+//                               </div>
+//                               <div className="ml-2 opacity-90 text-xs">
+//                                 {msg.status === "read"
+//                                   ? "👁 read"
+//                                   : msg.status === "delivered"
+//                                     ? "✓ delivered"
+//                                     : "• sent"}
+//                               </div>
+//                             </div>
+//                           </div>
+//                         ))
+//                       )}
+//                     </div>
+//                   )}
+//                 </div>
+//               )}
+
+//               {/* Original Live Chat */}
+//               <div className="border-t pt-4 max-h-64 overflow-y-auto">
+//                 <h2 className="text-lg font-semibold mb-2">📨 Live Messages</h2>
+//                 <div className="space-y-2">
+//                   {messages.map((msg, i) => (
+//                     <div
+//                       key={i}
+//                       onClick={() => msg.incoming && handleIncomingClick(msg)}
+//                       className={`p-3 rounded shadow text-sm cursor-pointer ${
+//                         msg.incoming
+//                           ? "bg-gray-200 text-left"
+//                           : "bg-blue-500 text-white text-right ml-auto"
+//                       }`}
+//                     >
+//                       <div>{msg.content}</div>
+//                       <div className="flex items-center justify-between mt-1">
+//                         <div className="text-xs opacity-70">
+//                           {msg.createdAt
+//                             ? new Date(msg.createdAt).toLocaleTimeString()
+//                             : new Date(
+//                                 msg?.createdAt || Date.now()
+//                               ).toLocaleTimeString()}
+//                         </div>
+//                         <div className="ml-2 opacity-90">
+//                           {renderStatus(msg)}
+//                         </div>
+//                       </div>
+//                     </div>
+//                   ))}
+//                   <div ref={messagesEndRef} />
+//                 </div>
+//               </div>
+//             </div>
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   );
+// }
+
+
+
+
+import React, { useState, useEffect, useRef } from 'react';
 import * as signalR from '@microsoft/signalr';
-import './App.css';
-import WebSocketChat from './Websocket';
 
-function App() {
+import "./App.css";
+
+export default function App() {
+  const [jwt, setJwt] = useState("");
+  const [userId, setUserId] = useState("");
+  const [recipientId, setRecipientId] = useState("");
+  const [message, setMessage] = useState("");
   const [connection, setConnection] = useState(null);
-  const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [userId, setUserId] = useState('');
-  const [logs, setLogs] = useState([]);
-  const connectionRef = useRef(null);
+  const [connected, setConnected] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [showConversations, setShowConversations] = useState(false);
+  const [conversationMessages, setConversationMessages] = useState([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  
+  // Media states
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [showFilePicker, setShowFilePicker] = useState(false);
+  
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // Add log function
-  const addLog = (message, type = 'info') => {
-    const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, { timestamp, message, type }]);
-    console.log(`[${timestamp}] ${message}`);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    console.log("Message state: ", messages);
+  }, [messages]);
+
+  const postReceipt = async (endpoint, body) => {
+    try {
+      console.log("Endpoint of send/read api:", endpoint);
+      console.log("Body of send/read api:", body);
+      const res = await fetch(`http://localhost:4002/chat/${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      console.log("Getting on read:", data);
+      if (!res.ok) {
+        console.log("GETTING INTO THIS BLOCK");
+        console.warn(`${endpoint} request failed`, data);
+      }
+      return data;
+    } catch (err) {
+      console.error(`❌ ${endpoint} error:`, err);
+      return null;
+    }
   };
 
-  // Connect with userId from input
+  const updateMessageById = (messageId, patch) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+    );
+  };
+
+  // File handling functions
+  const handleFileSelect = (event) => {
+    const files = Array.from(event.target.files);
+    
+    // Validate file count
+    if (files.length > 10) {
+      alert("Maximum 10 files allowed per message");
+      return;
+    }
+
+    // Validate file sizes and types
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    const allowedTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+      'video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/webm',
+      'audio/mp3', 'audio/wav', 'audio/aac', 'audio/ogg', 'audio/mpeg',
+      'application/pdf', 'text/plain'
+    ];
+
+    const validFiles = [];
+    const errors = [];
+
+    files.forEach((file, index) => {
+      if (file.size > maxSize) {
+        errors.push(`${file.name}: File too large (max 100MB)`);
+      } else if (!allowedTypes.includes(file.type.toLowerCase())) {
+        errors.push(`${file.name}: File type not supported`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (errors.length > 0) {
+      alert(`File validation errors:\n${errors.join('\n')}`);
+    }
+
+    if (validFiles.length > 0) {
+      setSelectedFiles(validFiles);
+      setShowFilePicker(true);
+    }
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const getFileIcon = (fileType) => {
+    if (fileType.startsWith('image/')) return '🖼️';
+    if (fileType.startsWith('video/')) return '🎥';
+    if (fileType.startsWith('audio/')) return '🎵';
+    if (fileType.includes('pdf')) return '📄';
+    return '📎';
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Send multiple media files
+  const sendMediaFiles = async () => {
+    if (selectedFiles.length === 0) return;
+    
+    setUploadingMedia(true);
+    try {
+      const formData = new FormData();
+      
+      // Add files to form data
+      selectedFiles.forEach(file => {
+        formData.append('media', file);
+      });
+      
+      formData.append('recipientId', recipientId);
+      if (message.trim()) {
+        formData.append('content', message.trim());
+      }
+
+      const endpoint = selectedFiles.length === 1 ? 'send-media' : 'send-multiple-media';
+      
+      const res = await fetch(`http://localhost:4002/chat/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+        },
+        body: formData
+      });
+
+      const data = await res.json();
+      console.log('Media send response:', data);
+
+      if (data.success) {
+        const outgoing = {
+          ...data.message,
+          incoming: false,
+          status: data.message?.status || "sent",
+        };
+        setMessages(prev => [...prev, outgoing]);
+        
+        // Clear form
+        setMessage("");
+        setSelectedFiles([]);
+        setShowFilePicker(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        
+        if (data.uploadResults && data.uploadResults.failed > 0) {
+          alert(`Message sent but ${data.uploadResults.failed} files failed to upload`);
+        }
+      } else {
+        throw new Error(data.error || 'Failed to send media');
+      }
+    } catch (err) {
+      console.error('❌ Media send error:', err);
+      alert('❌ Failed to send media files');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  // NEW API: Get all conversations for the user
+  const fetchConversations = async () => {
+    try {
+      setLoadingConversations(true);
+      console.log("🔄 Fetching conversations for user:", userId);
+
+      const res = await fetch(
+        `http://localhost:4002/chat/conversations?page=1&limit=20`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${jwt}` },
+        }
+      );
+
+      const data = await res.json();
+      console.log("✅ Conversations response:", data);
+
+      if (data.success) {
+        setConversations(data.conversations);
+        setShowConversations(true);
+      } else {
+        throw new Error(data.error || "Failed to fetch conversations");
+      }
+    } catch (err) {
+      console.error("❌ Fetch conversations error:", err);
+      alert("❌ Failed to fetch conversations");
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  // NEW API: Get messages between two users
+  const fetchConversationMessages = async (otherUserId) => {
+    try {
+      setLoadingMessages(true);
+      console.log("🔄 Fetching messages between:", userId, "and", otherUserId);
+
+      const res = await fetch(
+        `http://localhost:4002/chat/messages?otherUserId=${otherUserId}&page=1&limit=50`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${jwt}` },
+        }
+      );
+
+      const data = await res.json();
+      console.log("✅ Messages response:", data);
+
+      if (data.success) {
+        const messagesOldestFirst = data.messages.reverse();
+        setConversationMessages(messagesOldestFirst);
+        setSelectedConversation(otherUserId);
+      } else {
+        throw new Error(data.error || "Failed to fetch messages");
+      }
+    } catch (err) {
+      console.error("❌ Fetch messages error:", err);
+      alert("❌ Failed to fetch messages");
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
   const connectToSignalR = async () => {
-    if (!userId.trim()) {
-      addLog('Please enter a User ID before connecting', 'error');
+    try {
+      const res = await fetch("http://localhost:4002/negotiate", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      console.log("Negotiate api response:", res);
+      if (!res.ok) throw new Error("Negotiate failed");
+      const { url, accessToken } = await res.json();
+      const newConnection = new signalR.HubConnectionBuilder()
+        .withUrl(url, {
+          accessTokenFactory: () => accessToken,
+        })
+        .withAutomaticReconnect()
+        .configureLogging(signalR.LogLevel.Information)
+        .build();
+
+      newConnection.on("newMessage", async (msg) => {
+        console.log("📥 Received newMessage:", msg);
+        const incomingMsg = {
+          ...msg,
+          incoming: true,
+          status: msg.status || "sent",
+        };
+        setMessages((prev) => [...prev, incomingMsg]);
+
+        if (incomingMsg.messageId) {
+          console.log("DELIVERD BLOCK DATA", incomingMsg);
+          postReceipt("delivered", {
+            messageId: incomingMsg.messageId,
+            recipientId: userId,
+          }).catch((e) =>
+            console.warn("Failed to post delivered receipt (non-fatal):", e)
+          );
+          updateMessageById(incomingMsg.messageId, {
+            status: "delivered",
+            deliveredAt: new Date().toISOString(),
+          });
+        }
+      });
+
+      newConnection.on("messageReceipt", (receipt) => {
+        console.log("📣 Received messageReceipt:", receipt);
+        if (!receipt || !receipt.messageId) return;
+        updateMessageById(receipt.messageId, {
+          status: receipt.status,
+          ...(receipt.timestamp ? { statusAt: receipt.timestamp } : {}),
+        });
+      });
+
+      await newConnection.start();
+      setConnection(newConnection);
+      setConnected(true);
+      alert("✅ Connected to SignalR!");
+    } catch (err) {
+      console.error("❌ Connection error:", err);
+      alert("❌ Failed to connect to SignalR.");
+    }
+  };
+
+  const sendMessage = async () => {
+    if (selectedFiles.length > 0) {
+      await sendMediaFiles();
+      return;
+    }
+
+    if (!message.trim()) {
+      alert("Please enter a message");
       return;
     }
 
     try {
-      addLog(`Getting negotiate info for userId=${userId}...`, 'info');
-
-      const negotiateResponse = await fetch('http://165.227.209.124:4002/signalr/negotiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
+      const res = await fetch("http://localhost:4002/chat/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ recipientId, content: message }),
       });
-
-      if (!negotiateResponse.ok) {
-        throw new Error(`Negotiate failed: ${negotiateResponse.status} ${negotiateResponse.statusText}`);
+      const data = await res.json();
+      console.log("Send response:", data);
+      if (data.success) {
+        const outgoing = {
+          ...data.message,
+          incoming: false,
+          status: data.message?.status || "sent",
+        };
+        setMessages((prev) => [...prev, outgoing]);
+        setMessage("");
+      } else {
+        throw new Error(data.error || "Failed to send");
       }
-
-      const negotiateData = await negotiateResponse.json();
-      addLog(`Negotiate success: ${JSON.stringify(negotiateData)}`, 'success');
-
-      const newConnection = new signalR.HubConnectionBuilder()
-        .withUrl(negotiateData.url, {
-          accessTokenFactory: () => negotiateData.accessToken,
-          transport: signalR.HttpTransportType.WebSockets
-        })
-        .configureLogging(signalR.LogLevel.Information)
-        .build();
-
-      // Listen for messages
-      newConnection.on('NewMessage', (message) => {
-        addLog(`Received NewMessage: ${JSON.stringify(message)}`, 'success');
-        setMessages(prev => [...prev, message]);
-      });
-
-      newConnection.onclose((error) => {
-        addLog(`Connection closed: ${error?.message || 'no error'}`, 'error');
-        setConnected(false);
-        setConnection(null);
-      });
-
-      addLog('Starting SignalR connection...', 'info');
-      await newConnection.start();
-
-      addLog(`Connected! Connection ID: ${newConnection.connectionId}`, 'success');
-      setConnection(newConnection);
-      setConnected(true);
-      connectionRef.current = newConnection;
-
-    } catch (error) {
-      addLog(`Connection failed: ${error.message}`, 'error');
-      console.error('SignalR Connection Error:', error);
+    } catch (err) {
+      console.error("❌ Send error:", err);
+      alert("❌ Failed to send message");
     }
   };
 
-  // Disconnect
-  const disconnect = async () => {
-    if (connection) {
-      try {
-        await connection.stop();
-        addLog('Disconnected successfully', 'info');
-      } catch (error) {
-        addLog(`Disconnect error: ${error.message}`, 'error');
-      }
-      setConnection(null);
-      setConnected(false);
+  const handleIncomingClick = async (msg) => {
+    if (!msg || !msg.messageId) return;
+    if (msg.status === "read") return;
+    updateMessageById(msg.messageId, {
+      status: "read",
+      readAt: new Date().toISOString(),
+    });
+    await postReceipt("read", {
+      messageId: msg.messageId,
+      recipientId: userId,
+    });
+  };
+
+  const renderStatus = (m) => {
+    const s = m.status || "sent";
+    if (m.incoming) {
+      if (s === "read") return <span className="text-xs">👁 read</span>;
+      if (s === "delivered")
+        return <span className="text-xs">✓ delivered</span>;
+      return <span className="text-xs">• sent</span>;
+    } else {
+      if (s === "read") return <span className="text-xs">👁 read</span>;
+      if (s === "delivered")
+        return <span className="text-xs">✓ delivered</span>;
+      return <span className="text-xs">• sent</span>;
     }
   };
 
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (connectionRef.current) {
-        connectionRef.current.stop();
-      }
-    };
-  }, []);
+  // Render media attachments
+  const renderAttachments = (attachments) => {
+    if (!attachments || attachments.length === 0) return null;
+
+    return (
+      <div className="mt-2 space-y-2">
+        {attachments.map((attachment, index) => (
+          <div key={index} className="border rounded p-2 bg-white bg-opacity-20">
+            {attachment.fileType === 'image' && (
+              <img 
+                src={attachment.url} 
+                alt={attachment.fileName}
+                className="max-w-xs max-h-48 rounded cursor-pointer"
+                onClick={() => window.open(attachment.url, '_blank')}
+              />
+            )}
+            {attachment.fileType === 'video' && (
+              <video 
+                controls 
+                className="max-w-xs max-h-48 rounded"
+                src={attachment.url}
+              />
+            )}
+            {attachment.fileType === 'audio' && (
+              <audio 
+                controls 
+                className="w-full max-w-xs"
+                src={attachment.url}
+              />
+            )}
+            {attachment.fileType === 'document' && (
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">📄</span>
+                <a 
+                  href={attachment.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline text-sm"
+                >
+                  {attachment.fileName}
+                </a>
+                <span className="text-xs opacity-70">
+                  ({formatFileSize(attachment.fileSize)})
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderMessage = (msg) => {
+    const hasContent = msg.content && msg.content.trim();
+    const hasAttachments = msg.attachments && msg.attachments.length > 0;
+
+    return (
+      <div className="space-y-1">
+        {hasContent && <div>{msg.content}</div>}
+        {hasAttachments && renderAttachments(msg.attachments)}
+      </div>
+    );
+  };
+
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString();
+  };
+
+  const formatDate = (timestamp) => {
+    return new Date(timestamp).toLocaleDateString();
+  };
 
   return (
-     <div className="min-h-screen bg-gray-100 text-gray-900 p-6">
-      <div className="max-w-5xl mx-auto space-y-8">
-        <h1 className="text-3xl font-bold text-center text-blue-600">Azure SignalR Test Client</h1>
+    <div className="min-h-screen bg-gray-100 p-4">
+      <div className="max-w-4xl mx-auto bg-white shadow p-6 rounded">
+        <h1 className="text-2xl font-bold mb-4">
+          🔗 SignalR Chat Tester (with Media Support)
+        </h1>
 
-        {/* Connection Controls */}
-        <div className="bg-white shadow-md rounded-lg p-6 space-y-4">
-          <h3 className="text-xl font-semibold">
-            Status: 
-            <span className={`ml-2 font-bold ${connected ? 'text-green-600' : 'text-red-600'}`}>
-              {connected ? '✅ Connected' : '❌ Disconnected'}
-            </span>
-          </h3>
-
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <label className="font-medium">User ID:</label>
-            <input 
-              type="text"
-              className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-100"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              placeholder="Enter your userId"
-              disabled={connected}
-            />
-          </div>
-
-          <div className="flex gap-4">
-            <button 
+        {!connected ? (
+          <>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">
+                🔐 JWT Token
+              </label>
+              <textarea
+                rows={3}
+                className="w-full border rounded px-3 py-2"
+                value={jwt}
+                onChange={(e) => setJwt(e.target.value)}
+              />
+            </div>
+            <button
               onClick={connectToSignalR}
-              disabled={connected}
-              className={`px-4 py-2 rounded font-semibold ${
-                connected ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
             >
               Connect
             </button>
+          </>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Panel - Controls and Chat List */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* User Controls */}
+              <div className="space-y-4 p-4 bg-gray-50 rounded">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    👤 Your User ID
+                  </label>
+                  <input
+                    className="w-full border rounded px-3 py-2"
+                    value={userId}
+                    onChange={(e) => setUserId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    🎯 Recipient ID
+                  </label>
+                  <input
+                    className="w-full border rounded px-3 py-2"
+                    value={recipientId}
+                    onChange={(e) => setRecipientId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    💬 Message
+                  </label>
+                  <input
+                    className="w-full border rounded px-3 py-2"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  />
+                </div>
 
-            <button 
-              onClick={disconnect}
-              disabled={!connected}
-              className={`px-4 py-2 rounded font-semibold ${
-                !connected ? 'bg-gray-300 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'
-              }`}
-            >
-              Disconnect
-            </button>
-          </div>
-        </div>
+                {/* File Selection */}
+                <div className="space-y-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    multiple
+                    accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 flex items-center justify-center space-x-2"
+                  >
+                    <span>📎</span>
+                    <span>Add Files</span>
+                  </button>
+                  
+                  {selectedFiles.length > 0 && (
+                    <div className="text-sm text-gray-600">
+                      {selectedFiles.length} file(s) selected
+                    </div>
+                  )}
+                </div>
 
-        {/* Received Messages */}
-        <div className="bg-white shadow-md rounded-lg p-6 space-y-4">
-          <h3 className="text-xl font-semibold">Received Messages ({messages.length})</h3>
-          <div className="max-h-64 overflow-y-auto space-y-4">
-            {messages.map((msg, i) => (
-              <div key={i} className="border border-gray-200 rounded-md p-4 bg-gray-50">
-                <p><strong>From:</strong> {msg.senderId}</p>
-                <p><strong>Content:</strong> {msg.content}</p>
-                <p><strong>Time:</strong> {new Date(msg.createdAt).toLocaleString()}</p>
-                <p><strong>Conversation:</strong> {msg.conversationId}</p>
+                <button
+                  onClick={sendMessage}
+                  disabled={uploadingMedia}
+                  className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-gray-400"
+                >
+                  {uploadingMedia ? "Sending..." : selectedFiles.length > 0 ? "Send Media" : "Send Message"}
+                </button>
               </div>
-            ))}
-            {messages.length === 0 && (
-              <p className="text-gray-500 italic">No messages received yet.</p>
-            )}
-          </div>
-        </div>
 
-        {/* Debug Logs */}
-        <div className="bg-white shadow-md rounded-lg p-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-semibold">Logs</h3>
-            <button
-              onClick={() => setLogs([])}
-              className="text-sm text-red-600 hover:underline"
-            >
-              Clear Logs
-            </button>
-          </div>
-          <div className="max-h-64 overflow-y-auto space-y-2 font-mono text-sm">
-            {logs.map((log, i) => (
-              <div 
-                key={i} 
-                className={`p-2 rounded border ${
-                  log.type === 'error' 
-                    ? 'bg-red-100 border-red-300 text-red-800'
-                    : log.type === 'warn'
-                    ? 'bg-yellow-100 border-yellow-300 text-yellow-800'
-                    : 'bg-green-100 border-green-300 text-green-800'
-                }`}
-              >
-                <span className="font-bold">[{log.timestamp}]</span> {log.message}
+              {/* File Preview */}
+              {showFilePicker && selectedFiles.length > 0 && (
+                <div className="p-4 bg-yellow-50 rounded border">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-medium text-sm">Selected Files</h4>
+                    <button
+                      onClick={() => {
+                        setSelectedFiles([]);
+                        setShowFilePicker(false);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="text-red-600 text-sm hover:underline"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between text-xs bg-white p-2 rounded">
+                        <div className="flex items-center space-x-2 flex-1">
+                          <span>{getFileIcon(file.type)}</span>
+                          <span className="truncate">{file.name}</span>
+                          <span className="text-gray-500">({formatFileSize(file.size)})</span>
+                        </div>
+                        <button
+                          onClick={() => removeFile(index)}
+                          className="text-red-600 hover:text-red-800 ml-2"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* New Chat List Feature */}
+              <div className="p-4 bg-gray-50 rounded">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">💬 Chat List</h3>
+                  <button
+                    onClick={fetchConversations}
+                    disabled={loadingConversations || !userId}
+                    className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 disabled:bg-gray-400"
+                  >
+                    {loadingConversations ? "Loading..." : "Refresh"}
+                  </button>
+                </div>
+
+                {showConversations && (
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {conversations.length === 0 ? (
+                      <p className="text-gray-500 text-sm">
+                        No conversations found
+                      </p>
+                    ) : (
+                      conversations.map((conv) => (
+                        <div
+                          key={conv.conversationId}
+                          onClick={() =>
+                            fetchConversationMessages(conv.otherUser?.userId)
+                          }
+                          className={`p-3 border rounded cursor-pointer hover:bg-blue-50 ${
+                            selectedConversation === conv.otherUser?.userId
+                              ? "bg-blue-100 border-blue-300"
+                              : "bg-white"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="font-medium text-sm">
+                                {conv.otherUser?.firstName}{" "}
+                                {conv.otherUser?.lastName}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                @{conv.otherUser?.username}
+                              </div>
+                              {conv.lastMessage && (
+                                <div className="text-xs text-gray-600 mt-1 truncate">
+                                  {conv.lastMessage.content || (conv.lastMessage.attachments?.length > 0 ? "📎 Media" : "Message")}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-400 ml-2">
+                              {formatTime(conv.lastActivityAt)}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-            {logs.length === 0 && (
-              <p className="text-gray-500 italic">No logs yet.</p>
-            )}
+            </div>
+
+            {/* Right Panel - Messages */}
+            <div className="lg:col-span-2">
+              {/* Selected Conversation Messages */}
+              {selectedConversation && (
+                <div className="mb-6 p-4 bg-blue-50 rounded">
+                  <h3 className="text-lg font-semibold mb-2">
+                    📨 Messages with {selectedConversation}
+                  </h3>
+                  {loadingMessages ? (
+                    <p className="text-gray-500">Loading messages...</p>
+                  ) : (
+                    <div className="max-h-64 overflow-y-auto space-y-2 bg-white p-3 rounded">
+                      {conversationMessages.length === 0 ? (
+                        <p className="text-gray-500 text-sm">
+                          No messages found
+                        </p>
+                      ) : (
+                        conversationMessages.map((msg, i) => (
+                          <div
+                            key={i}
+                            className={`p-3 rounded shadow text-sm ${
+                              msg.senderId === userId
+                                ? "bg-blue-500 text-white text-right ml-auto max-w-xs"
+                                : "bg-gray-200 text-left max-w-xs"
+                            }`}
+                          >
+                            {renderMessage(msg)}
+                            <div className="flex items-center justify-between mt-1">
+                              <div className="text-xs opacity-70">
+                                {formatTime(msg.createdAt)}
+                              </div>
+                              <div className="ml-2 opacity-90 text-xs">
+                                {msg.status === "read"
+                                  ? "👁 read"
+                                  : msg.status === "delivered"
+                                    ? "✓ delivered"
+                                    : "• sent"}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Original Live Chat */}
+              <div className="border-t pt-4 max-h-64 overflow-y-auto">
+                <h2 className="text-lg font-semibold mb-2">📨 Live Messages</h2>
+                <div className="space-y-2">
+                  {messages.map((msg, i) => (
+                    <div
+                      key={i}
+                      onClick={() => msg.incoming && handleIncomingClick(msg)}
+                      className={`p-3 rounded shadow text-sm cursor-pointer ${
+                        msg.incoming
+                          ? "bg-gray-200 text-left max-w-xs"
+                          : "bg-blue-500 text-white text-right ml-auto max-w-xs"
+                      }`}
+                    >
+                      {renderMessage(msg)}
+                      <div className="flex items-center justify-between mt-1">
+                        <div className="text-xs opacity-70">
+                          {msg.createdAt
+                            ? new Date(msg.createdAt).toLocaleTimeString()
+                            : new Date(
+                                msg?.createdAt || Date.now()
+                              ).toLocaleTimeString()}
+                        </div>
+                        <div className="ml-2 opacity-90">
+                          {renderStatus(msg)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
-<WebSocketChat />
     </div>
   );
 }
-
-export default App;
