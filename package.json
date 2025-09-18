@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@azure/communication-calling": "^1.38.1",
+    "@azure/communication-common": "^2.4.0",
     "@microsoft/signalr": "^9.0.6",
     "@tailwindcss/vite": "^4.1.12",
     "axios": "^1.11.0",
