@@ -605,7 +605,6 @@
 // };
 
 // export default CallPanel;
- 
 
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -629,7 +628,7 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
   const [translationEnabled, setTranslationEnabled] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [languages, setLanguages] = useState([]);
-  
+
   // NEW: Subtitle state
   const [subtitles, setSubtitles] = useState([]);
   const [currentSubtitle, setCurrentSubtitle] = useState("");
@@ -642,7 +641,7 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
   const durationIntervalRef = useRef(null);
   const callIdRef = useRef(null);
   const acsGroupCallIdRef = useRef(null);
-  
+
   // NEW: Audio WebSocket ref
   const audioWsRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -722,27 +721,27 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
         });
 
         // NEW: Subtitle handler
-       // In CallPanel.jsx - Update subtitle display
-connection.on("subtitle_update", (data) => {
-  console.log("Subtitle received:", data);
-  
-  if (data.callId === callIdRef.current) {
-    const subtitle = {
-      id: Date.now(),
-      speaker: data.speaker === "caller" ? "Them" : "You", // More user-friendly
-      original: data.original,
-      translated: data.translated,
-      timestamp: data.timestamp,
-    };
+        // In CallPanel.jsx - Update subtitle display
+        connection.on("subtitle_update", (data) => {
+          console.log("Subtitle received:", data);
 
-    setSubtitles((prev) => [...prev.slice(-4), subtitle]);
-    setCurrentSubtitle(data.translated); // This is in YOUR language
+          if (data.callId === callIdRef.current) {
+            const subtitle = {
+              id: Date.now(),
+              speaker: data.speaker === "caller" ? "Them" : "You", // More user-friendly
+              original: data.original,
+              translated: data.translated,
+              timestamp: data.timestamp,
+            };
 
-    setTimeout(() => {
-      setCurrentSubtitle("");
-    }, 5000); // Increased from 3 to 5 seconds
-  }
-});
+            setSubtitles((prev) => [...prev.slice(-4), subtitle]);
+            setCurrentSubtitle(data.translated); // This is in YOUR language
+
+            setTimeout(() => {
+              setCurrentSubtitle("");
+            }, 5000); // Increased from 3 to 5 seconds
+          }
+        });
 
         await connection.start();
         console.log("SignalR Connected");
@@ -798,7 +797,7 @@ connection.on("subtitle_update", (data) => {
 
       audioWsRef.current.onopen = () => {
         console.log("Audio WebSocket connected");
-        
+
         // Send metadata
         audioWsRef.current.send(
           JSON.stringify({
@@ -832,53 +831,64 @@ connection.on("subtitle_update", (data) => {
   const captureMicrophone = async () => {
     try {
       console.log("🎤 Requesting microphone access...");
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 16000,
-        } 
+        },
       });
 
       console.log("✅ Microphone access granted");
 
       audioContextRef.current = new AudioContext({ sampleRate: 16000 });
       const source = audioContextRef.current.createMediaStreamSource(stream);
-      
-      console.log(`🎵 Audio context created, sample rate: ${audioContextRef.current.sampleRate}Hz`);
-      
+
+      console.log(
+        `🎵 Audio context created, sample rate: ${audioContextRef.current.sampleRate}Hz`
+      );
+
       // Create script processor for audio processing
-      processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-      
+      processorRef.current = audioContextRef.current.createScriptProcessor(
+        4096,
+        1,
+        1
+      );
+
       let chunksSent = 0;
-      
+
       processorRef.current.onaudioprocess = (e) => {
-        if (!audioWsRef.current || audioWsRef.current.readyState !== WebSocket.OPEN) {
+        if (
+          !audioWsRef.current ||
+          audioWsRef.current.readyState !== WebSocket.OPEN
+        ) {
           return;
         }
 
         const audioData = e.inputBuffer.getChannelData(0);
-        
+
         // Convert Float32Array to Int16Array (16-bit PCM)
         const buffer = new Int16Array(audioData.length);
         for (let i = 0; i < audioData.length; i++) {
           const s = Math.max(-1, Math.min(1, audioData[i]));
-          buffer[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
         }
-        
+
         // Send to backend
         audioWsRef.current.send(buffer.buffer);
         chunksSent++;
-        
+
         if (chunksSent % 10 === 0) {
-          console.log(`📤 Sent ${chunksSent} audio chunks (${buffer.length * 2} bytes each)`);
+          console.log(
+            `📤 Sent ${chunksSent} audio chunks (${buffer.length * 2} bytes each)`
+          );
         }
       };
-      
+
       source.connect(processorRef.current);
       processorRef.current.connect(audioContextRef.current.destination);
-      
+
       console.log("✅ Microphone capture started for translation");
     } catch (error) {
       console.error("❌ Error capturing microphone:", error);
@@ -892,17 +902,17 @@ connection.on("subtitle_update", (data) => {
       processorRef.current.disconnect();
       processorRef.current = null;
     }
-    
+
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
-    
+
     if (audioWsRef.current) {
       audioWsRef.current.close();
       audioWsRef.current = null;
     }
-    
+
     console.log("Audio streaming stopped");
   };
 
@@ -952,16 +962,24 @@ connection.on("subtitle_update", (data) => {
         const { callId, acsGroupCallId, acsToken, receiver } = response.data;
 
         callIdRef.current = callId;
-        
+
         // Set translation preference
         if (translationEnabled && selectedLanguage) {
-          await axios.post(`${API_BASE_URL}/${callId}/translation`, {
-            participant: "caller",
-            enabled: true,
-            language: selectedLanguage,
-          });
+          const response = await axios.post(
+            `${API_BASE_URL}/${callId}/translation`,
+            {
+              participant: "caller",
+              enabled: true,
+              language: selectedLanguage,
+            }
+          );
+
+          // NEW: Start audio if translation started
+          if (response.data.translationStarted) {
+            handleTranslationReady("caller");
+          }
         }
-        
+
         acsGroupCallIdRef.current = acsGroupCallId;
 
         console.log("Call initiated:", response.data);
@@ -980,13 +998,13 @@ connection.on("subtitle_update", (data) => {
           if (call.state === "Connected") {
             setCallStatus("connected");
             startCallDuration();
-            
+
             // Start audio streaming for translation
-            if (translationEnabled) {
-              setTimeout(() => {
-                startAudioStreaming("caller");
-              }, 1000);
-            }
+            // if (translationEnabled) {
+            //   setTimeout(() => {
+            //     startAudioStreaming("caller");
+            //   }, 1000);
+            // }
           }
         });
 
@@ -994,7 +1012,10 @@ connection.on("subtitle_update", (data) => {
       }
     } catch (error) {
       console.error("Error initiating call:", error);
-      alert("Failed to initiate call: " + (error.response?.data?.message || error.message));
+      alert(
+        "Failed to initiate call: " +
+          (error.response?.data?.message || error.message)
+      );
       handleCallEnd();
     }
   };
@@ -1015,11 +1036,19 @@ connection.on("subtitle_update", (data) => {
 
         // Set translation preference
         if (translationEnabled && selectedLanguage) {
-          await axios.post(`${API_BASE_URL}/${callIdRef.current}/translation`, {
-            participant: "callee",
-            enabled: true,
-            language: selectedLanguage,
-          });
+          const response = await axios.post(
+            `${API_BASE_URL}/${callIdRef.current}/translation`,
+            {
+              participant: "callee",
+              enabled: true,
+              language: selectedLanguage,
+            }
+          );
+
+          // NEW: Start audio if translation started
+          if (response.data.translationStarted) {
+            handleTranslationReady("callee");
+          }
         }
 
         acsGroupCallIdRef.current = acsGroupCallId;
@@ -1039,14 +1068,8 @@ connection.on("subtitle_update", (data) => {
         call.on("stateChanged", () => {
           console.log("Call state:", call.state);
           if (call.state === "Connected") {
+            setCallStatus("connected");
             startCallDuration();
-            
-            // Start audio streaming for translation
-            if (translationEnabled) {
-              setTimeout(() => {
-                startAudioStreaming("callee");
-              }, 1000);
-            }
           }
         });
 
@@ -1054,7 +1077,10 @@ connection.on("subtitle_update", (data) => {
       }
     } catch (error) {
       console.error("Error accepting call:", error);
-      alert("Failed to accept call: " + (error.response?.data?.message || error.message));
+      alert(
+        "Failed to accept call: " +
+          (error.response?.data?.message || error.message)
+      );
       handleCallEnd();
     }
   };
@@ -1156,6 +1182,15 @@ connection.on("subtitle_update", (data) => {
     }
   };
 
+  const handleTranslationReady = (participant) => {
+    console.log(
+      `Translation ready for ${participant}, starting audio streaming...`
+    );
+    setTimeout(() => {
+      startAudioStreaming(participant);
+    }, 500);
+  };
+
   return (
     <div className="w-full max-w-md mx-auto p-4 bg-white rounded-lg shadow-lg">
       {/* Header */}
@@ -1177,7 +1212,7 @@ connection.on("subtitle_update", (data) => {
             <h3 className="text-lg font-semibold mb-1">Incoming Call</h3>
             <p className="text-gray-700 mb-1">{incomingCallData?.callerName}</p>
             <p className="text-sm text-gray-500 mb-4">Audio Call</p>
-            
+
             {/* Translation toggle for incoming call */}
             <div className="mb-3">
               <label className="flex items-center gap-2 justify-center text-sm">
@@ -1206,7 +1241,7 @@ connection.on("subtitle_update", (data) => {
                 </select>
               </div>
             )}
-            
+
             <div className="flex gap-2 justify-center">
               <button
                 onClick={acceptCall}
