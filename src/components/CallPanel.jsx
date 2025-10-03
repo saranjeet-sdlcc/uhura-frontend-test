@@ -1191,6 +1191,9 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
     }, 500);
   };
 
+  console.log("HOPING");
+  
+
   return (
     <div className="w-full max-w-md mx-auto p-4 bg-white rounded-lg shadow-lg">
       {/* Header */}
