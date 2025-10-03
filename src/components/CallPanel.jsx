@@ -720,21 +720,6 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
           handleCallEnd();
         });
 
-        // In the connectSignalR function, add this NEW event handler:
-
-        connection.on("translation_ready", (data) => {
-          console.log("Translation ready event received:", data);
-
-          if (data.callId === callIdRef.current) {
-            console.log(`Starting audio streaming as ${data.participant}...`);
-
-            // Start audio streaming now that translation is ready
-            setTimeout(() => {
-              startAudioStreaming(data.participant);
-            }, 500);
-          }
-        });
-
         // NEW: Subtitle handler
         // In CallPanel.jsx - Update subtitle display
         connection.on("subtitle_update", (data) => {
@@ -989,10 +974,10 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
             }
           );
 
-          // // NEW: Start audio if translation started
-          // if (response.data.translationStarted) {
-          //   handleTranslationReady("caller");
-          // }
+          // NEW: Start audio if translation started
+          if (response.data.translationStarted) {
+            handleTranslationReady("caller");
+          }
         }
 
         acsGroupCallIdRef.current = acsGroupCallId;
@@ -1061,9 +1046,9 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
           );
 
           // NEW: Start audio if translation started
-          // if (response.data.translationStarted) {
-          //   handleTranslationReady("callee");
-          // }
+          if (response.data.translationStarted) {
+            handleTranslationReady("callee");
+          }
         }
 
         acsGroupCallIdRef.current = acsGroupCallId;
@@ -1206,7 +1191,8 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
     }, 500);
   };
 
-  console.log("HOPING 0.2");
+  console.log("HOPING");
+  
 
   return (
     <div className="w-full max-w-md mx-auto p-4 bg-white rounded-lg shadow-lg">
