@@ -651,6 +651,17 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
   const SOCKET_URL = "http://localhost:4005";
   const WS_AUDIO_URL = "ws://localhost:4005/audio-stream";
 
+  // Dedupe set for subtitle events
+  const seenSubtitleIdsRef = useRef(new Set());
+
+  // Unique id helper for React keys
+  const makeSubtitleId = (d) =>
+    `${d.callId}|${d.timestamp}|${d.speaker}|${
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2)
+    }`;
+
   useEffect(() => {
     const fetchLanguages = async () => {
       try {
@@ -725,22 +736,29 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
         connection.on("subtitle_update", (data) => {
           console.log("Subtitle received:", data);
 
-          if (data.callId === callIdRef.current) {
-            const subtitle = {
-              id: Date.now(),
-              speaker: data.speaker === "caller" ? "Them" : "You", // More user-friendly
-              original: data.original,
-              translated: data.translated,
-              timestamp: data.timestamp,
-            };
+          if (data.callId !== callIdRef.current) return;
 
-            setSubtitles((prev) => [...prev.slice(-4), subtitle]);
-            setCurrentSubtitle(data.translated); // This is in YOUR language
+          // Deterministic key (no random part) to detect duplicate events
+          const eventKey = `${data.callId}|${data.timestamp}|${data.speaker}|${data.original ?? ""}`;
 
-            setTimeout(() => {
-              setCurrentSubtitle("");
-            }, 5000); // Increased from 3 to 5 seconds
+          if (seenSubtitleIdsRef.current.has(eventKey)) {
+            // Already processed; ignore duplicates
+            return;
           }
+          seenSubtitleIdsRef.current.add(eventKey);
+
+          const subtitle = {
+            id: makeSubtitleId(data), // unique key for React
+            speaker: data.speaker === "caller" ? "Them" : "You",
+            original: data.original,
+            translated: data.translated,
+            timestamp: data.timestamp,
+          };
+
+          setSubtitles((prev) => [...prev.slice(-4), subtitle]);
+          setCurrentSubtitle(data.translated);
+
+          setTimeout(() => setCurrentSubtitle(""), 5000);
         });
 
         await connection.start();
@@ -1192,7 +1210,6 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
   };
 
   console.log("HOPING");
-  
 
   return (
     <div className="w-full max-w-md mx-auto p-4 bg-white rounded-lg shadow-lg">
@@ -1314,9 +1331,15 @@ const CallPanel = ({ jwt, userId, onCallStateChange }) => {
               <p className="text-xs font-semibold mb-2">Subtitle History:</p>
               {subtitles.map((sub) => (
                 <div key={sub.id} className="mb-2 text-xs">
-                  <span className="font-semibold">
+                  {/* <span className="font-semibold">
                     [{sub.speaker === "caller" ? "Them" : "You"}]:
-                  </span>{" "}
+                  </span>{" "} */}
+
+
+<span className="font-semibold">[{sub.speaker}]:</span>
+
+
+
                   <span>{sub.translated}</span>
                 </div>
               ))}
