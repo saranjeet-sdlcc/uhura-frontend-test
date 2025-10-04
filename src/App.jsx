@@ -869,6 +869,7 @@
 // }
 
 
+
 import { useEffect, useState, useRef } from "react";
 import * as signalR from "@microsoft/signalr";
 import AuthForm from "./components/AuthForm";
@@ -1037,7 +1038,59 @@ export default function App() {
         if (!msg?.isGroup) {
           setMessages((prev) => [...prev, msg]);
         }
+
       });
+     // 🆕 handle group message updates from backend
+     chatConnection.on("messageEdited", (msg) => {
+       if (!msg?.groupId) return;
+       setGroupMessagesByGroup((prev) => {
+         const list = prev[msg.groupId] || [];
+         return {
+           ...prev,
+           [msg.groupId]: list.map((m) =>
+             m.messageId === msg.messageId ? { ...m, ...msg } : m
+           ),
+         };
+       });
+     });
+
+     chatConnection.on("messageDeleted", ({ groupId, messageId }) => {
+       setGroupMessagesByGroup((prev) => {
+         const list = prev[groupId] || [];
+         return {
+           ...prev,
+           [groupId]: list.map((m) =>
+             m.messageId === messageId
+               ? { ...m, content: "🗑️ Message deleted", deleted: true }
+               : m
+           ),
+         };
+       });
+     });
+
+     chatConnection.on("messageReceipt", ({ groupId, messageId, status, from }) => {
+       if (!groupId) return;
+       setGroupMessagesByGroup((prev) => {
+         const list = prev[groupId] || [];
+         const updated = list.map((m) =>
+          m.messageId === messageId
+             ? {
+                 ...m,
+                 status,
+                 deliveredTo:
+                   status === "delivered"
+                     ? [...(m.deliveredTo || []), from]
+                     : m.deliveredTo,
+                 readBy:
+                   status === "read"
+                     ? [...(m.readBy || []), from]
+                     : m.readBy,
+               }
+             : m
+         );
+         return { ...prev, [groupId]: updated };
+       });
+     });
 
       // (Optional) If your backend emits a dedicated event for groups:
       // chatConnection.on("newGroupMessage", (msg) => {
@@ -1370,7 +1423,7 @@ export default function App() {
                 jwt={jwt}
                 userId={userId}
                 receivedNotifications={receivedNotifications}
-                onClearReceived={() => setReceivedNotifications([])}
+                onC learReceived={() => setReceivedNotifications([])}
               />
             )}
           </>
