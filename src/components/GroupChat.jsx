@@ -1,471 +1,7 @@
-// // src/components/GroupChat.jsx
-// import { useEffect, useState, useRef } from "react";
-// import * as signalR from "@microsoft/signalr";
-
-// export default function GroupChat({ jwt, userId }) {
-//   const [connection, setConnection] = useState(null);
-//   const [groups, setGroups] = useState([]);
-//   const [selectedGroup, setSelectedGroup] = useState(null);
-//   const [messages, setMessages] = useState([]);
-//   const [canPost, setCanPost] = useState(false);
-
-//   // form states
-//   const [text, setText] = useState("");
-//   const [selectedFiles, setSelectedFiles] = useState([]);
-//   const [replyingTo, setReplyingTo] = useState(null);
-
-//   // create/edit
-//   const [groupName, setGroupName] = useState("");
-//   const [memberCsv, setMemberCsv] = useState("");
-//   const [description, setDescription] = useState("");
-//   const [editName, setEditName] = useState("");
-//   const [editDesc, setEditDesc] = useState("");
-
-//   const messagesEndRef = useRef(null);
-//   const fileInputRef = useRef(null);
-
-//   useEffect(() => {
-//     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages]);
-
-//   // --- SignalR connect
-//   const connect = async () => {
-//     const res = await fetch("http://localhost:4002/negotiate", {
-//       headers: { Authorization: `Bearer ${jwt}` },
-//     });
-//     const { url, accessToken } = await res.json();
-
-//     const conn = new signalR.HubConnectionBuilder()
-//       .withUrl(url, { accessTokenFactory: () => accessToken })
-//       .withAutomaticReconnect()
-//       .build();
-
-//     // realtime new messages
-//     conn.on("newMessage", (msg) => {
-//       console.log("📥 newMessage:", msg);
-
-//       if (msg.isGroup) {
-//         if (selectedGroup && msg.groupId === selectedGroup.groupId) {
-//           setMessages((prev) => [...prev, msg]);
-//         }
-
-//         if (msg.senderId !== userId && Notification.permission === "granted") {
-//           new Notification(`${msg.senderName || msg.senderId}`, {
-//             body: msg.content || "[media]",
-//           });
-//         }
-//       }
-//     });
-
-//     // realtime group updates
-//     conn.on("groupUpdated", (evt) => {
-//       console.log("📥 groupUpdated:", evt);
-
-//       if (evt.type === "groupDeleted" && evt.groupId === selectedGroup?.groupId) {
-//         alert("🚨 Group deleted by admin");
-//         setSelectedGroup(null);
-//         setMessages([]);
-//       } else if (evt.type === "memberRemoved" && evt.memberId === userId) {
-//         alert("🚫 You were removed from this group");
-//         setCanPost(false);
-//       }
-//       fetchGroups();
-//     });
-
-//     await conn.start();
-//     setConnection(conn);
-//     console.log("✅ Connected to SignalR hub");
-//   };
-
-//   // --- Groups
-//   const fetchGroups = async () => {
-//     const res = await fetch("http://localhost:4002/groups", {
-//       headers: { Authorization: `Bearer ${jwt}` },
-//     });
-//     const data = await res.json();
-//     setGroups(data.groups || []);
-//   };
-
-//   const fetchGroupDetails = async (groupId) => {
-//   const groupRes = await fetch(`http://localhost:4002/groups/${groupId}`, {
-//     headers: { Authorization: `Bearer ${jwt}` },
-//   });
-//   const groupData = await groupRes.json();
-//   if (groupData.success) {
-//     setSelectedGroup(groupData.group);
-//     setEditName(groupData.group.name);
-//     setEditDesc(groupData.group.description);
-//     setCanPost(groupData.group.canPost !== false);
-
-//     // ✅ Fetch messages from proper endpoint
-//     const msgRes = await fetch(`http://localhost:4002/groups/${groupId}/messages?page=1&limit=50`, {
-//       headers: { Authorization: `Bearer ${jwt}` },
-//     });
-//     const msgData = await msgRes.json();
-//     if (msgData.success) {
-//       setMessages(msgData.messages || []);
-//     }
-//   }
-// };
-
-
-//   const createGroup = async () => {
-//     const body = {
-//       name: groupName,
-//       description,
-//       memberIds: memberCsv.split(",").map((m) => m.trim()).filter(Boolean),
-//     };
-//     const res = await fetch("http://localhost:4002/groups", {
-//       method: "POST",
-//       headers: {
-//         "Content-Type": "application/json",
-//         Authorization: `Bearer ${jwt}`,
-//       },
-//       body: JSON.stringify(body),
-//     });
-//     const data = await res.json();
-//     if (data.success) {
-//       setGroupName("");
-//       setDescription("");
-//       setMemberCsv("");
-//       fetchGroups();
-//     } else alert(data.error || "Failed to create group");
-//   };
-
-//   // --- Admin actions
-//   const addMembers = async (ids) => {
-//     await fetch(`http://localhost:4002/groups/${selectedGroup.groupId}/members`, {
-//       method: "POST",
-//       headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-//       body: JSON.stringify({ memberIds: ids }),
-//     });
-//     fetchGroupDetails(selectedGroup.groupId);
-//   };
-
-//   const removeMember = async (id) => {
-//     await fetch(`http://localhost:4002/groups/${selectedGroup.groupId}/members`, {
-//       method: "DELETE",
-//       headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-//       body: JSON.stringify({ memberId: id }),
-//     });
-//     fetchGroupDetails(selectedGroup.groupId);
-//   };
-
-//   const leaveGroup = async () => {
-//     await fetch(`http://localhost:4002/groups/${selectedGroup.groupId}/leave`, {
-//       method: "POST",
-//       headers: { Authorization: `Bearer ${jwt}` },
-//     });
-//     setSelectedGroup(null);
-//     fetchGroups();
-//   };
-
-//   const updateGroup = async () => {
-//     await fetch(`http://localhost:4002/groups/${selectedGroup.groupId}`, {
-//       method: "PATCH",
-//       headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-//       body: JSON.stringify({ name: editName, description: editDesc }),
-//     });
-//     fetchGroupDetails(selectedGroup.groupId);
-//   };
-
-//   const deleteGroup = async () => {
-//     if (!window.confirm("Delete this group permanently?")) return;
-//     await fetch(`http://localhost:4002/groups/${selectedGroup.groupId}`, {
-//       method: "DELETE",
-//       headers: { Authorization: `Bearer ${jwt}` },
-//     });
-//     setSelectedGroup(null);
-//     fetchGroups();
-//   };
-
-//   // --- Messaging
-//   const sendMessage = async () => {
-//     if (!canPost || (!text.trim() && selectedFiles.length === 0)) return;
-//     const headers = { Authorization: `Bearer ${jwt}` };
-//     let body,
-//       endpoint = `http://localhost:4002/groups/${selectedGroup.groupId}/messages`;
-
-//     if (selectedFiles.length > 0) {
-//       const formData = new FormData();
-//       formData.append("content", text);
-//       selectedFiles.forEach((f) => formData.append("media", f));
-//       if (replyingTo) formData.append("replyToMessageId", replyingTo.messageId);
-//       body = formData;
-//       endpoint += "/media";
-//     } else {
-//       headers["Content-Type"] = "application/json";
-//       body = JSON.stringify({
-//         content: text,
-//         ...(replyingTo && { replyToMessageId: replyingTo.messageId }),
-//       });
-//     }
-
-//     const res = await fetch(endpoint, { method: "POST", headers, body });
-//     const data = await res.json();
-//     if (data.success) {
-//       // don’t push manually, SignalR will deliver it
-//       setText("");
-//       setSelectedFiles([]);
-//       setReplyingTo(null);
-//     }
-//   };
-
-//   // Init connect + groups
-//   useEffect(() => {
-//     if (jwt) {
-//       connect();
-//       fetchGroups();
-//     }
-//     if (Notification.permission !== "granted") {
-//       Notification.requestPermission();
-//     }
-//   }, [jwt]);
-
-//   return (
-//     <div className="flex h-[600px] border rounded overflow-hidden">
-//       {/* Sidebar */}
-//       <div className="w-1/4 bg-gray-100 border-r p-3 overflow-y-auto">
-//         <h3 className="font-bold mb-3">Groups</h3>
-//         {groups.map((g) => (
-//           <div
-//             key={g.groupId}
-//             onClick={() => fetchGroupDetails(g.groupId)}
-//             className={`p-2 rounded cursor-pointer mb-2 ${
-//               selectedGroup?.groupId === g.groupId
-//                 ? "bg-blue-500 text-white"
-//                 : "hover:bg-gray-200"
-//             }`}
-//           >
-//             {g.name}
-//           </div>
-//         ))}
-
-//         {/* Create Group */}
-//         <div className="mt-6">
-//           <h4 className="font-semibold mb-2">➕ Create Group</h4>
-//           <input
-//             className="w-full border mb-2 p-1"
-//             placeholder="Group Name"
-//             value={groupName}
-//             onChange={(e) => setGroupName(e.target.value)}
-//           />
-//           <input
-//             className="w-full border mb-2 p-1"
-//             placeholder="Description"
-//             value={description}
-//             onChange={(e) => setDescription(e.target.value)}
-//           />
-//           <input
-//             className="w-full border mb-2 p-1"
-//             placeholder="Member IDs (comma)"
-//             value={memberCsv}
-//             onChange={(e) => setMemberCsv(e.target.value)}
-//           />
-//           <button
-//             className="bg-green-600 text-white w-full py-1 rounded"
-//             onClick={createGroup}
-//           >
-//             Create
-//           </button>
-//         </div>
-//       </div>
-
-//       {/* Chat Panel */}
-//       <div className="flex-1 flex flex-col">
-//         {selectedGroup ? (
-//           <>
-//             {/* Header */}
-//             <div className="p-3 border-b bg-white flex justify-between items-center">
-//               <div>
-//                 <h2 className="font-bold">{selectedGroup.name}</h2>
-//                 <p className="text-sm text-gray-500">
-//                   {selectedGroup.description}
-//                 </p>
-//               </div>
-//               <button onClick={leaveGroup} className="text-red-500">
-//                 Leave
-//               </button>
-//             </div>
-
-//             {/* Messages */}
-//             <div className="flex-1 overflow-y-auto p-3 bg-gray-50">
-//               {messages.map((m) =>
-//                 m.messageType === "system" ? (
-//                   <div
-//                     key={m.messageId}
-//                     className="text-center text-xs text-gray-500 italic my-2"
-//                   >
-//                     {m.content}
-//                   </div>
-//                 ) : (
-//                   <div
-//                     key={m.messageId}
-//                     className={`mb-3 flex ${
-//                       m.senderId === userId
-//                         ? "justify-end"
-//                         : "justify-start"
-//                     }`}
-//                   >
-//                     <div
-//                       className={`max-w-xs px-3 py-2 rounded-lg ${
-//                         m.senderId === userId
-//                           ? "bg-blue-500 text-white"
-//                           : "bg-white border"
-//                       }`}
-//                     >
-//                       {m.senderId !== userId && (
-//                         <div className="text-xs font-bold mb-1">
-//                           {m.senderName || m.senderId}
-//                         </div>
-//                       )}
-//                       {m.replyTo && (
-//                         <div className="text-xs italic text-gray-400 border-l-2 pl-2 mb-1">
-//                           ↪ {m.replyTo.content || "[media]"}
-//                         </div>
-//                       )}
-//                       {m.content && <div>{m.content}</div>}
-//                       {m.attachments?.map((a, idx) => (
-//                         <div key={idx} className="mt-1">
-//                           {a.fileType === "image" ? (
-//                             <img
-//                               src={a.url}
-//                               alt={a.fileName}
-//                               className="max-h-32 rounded"
-//                             />
-//                           ) : (
-//                             <a
-//                               href={a.url}
-//                               target="_blank"
-//                               rel="noreferrer"
-//                               className="underline text-sm"
-//                             >
-//                               {a.fileName}
-//                             </a>
-//                           )}
-//                         </div>
-//                       ))}
-//                     </div>
-//                   </div>
-//                 )
-//               )}
-//               <div ref={messagesEndRef} />
-//             </div>
-
-//             {/* Composer */}
-//             <div className="p-3 border-t bg-white">
-//               {canPost ? (
-//                 <div className="flex items-center space-x-2">
-//                   <input
-//                     type="text"
-//                     value={text}
-//                     onChange={(e) => setText(e.target.value)}
-//                     placeholder="Type a message..."
-//                     className="flex-1 border px-3 py-2 rounded"
-//                     onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-//                   />
-//                   <input
-//                     type="file"
-//                     multiple
-//                     ref={fileInputRef}
-//                     onChange={(e) => setSelectedFiles(Array.from(e.target.files))}
-//                     className="hidden"
-//                   />
-//                   <button
-//                     onClick={() => fileInputRef.current.click()}
-//                     className="bg-gray-200 px-3 py-2 rounded"
-//                   >
-//                     📎
-//                   </button>
-//                   <button
-//                     onClick={sendMessage}
-//                     className="bg-blue-500 text-white px-3 py-2 rounded"
-//                   >
-//                     Send
-//                   </button>
-//                 </div>
-//               ) : (
-//                 <div className="text-gray-500 italic">
-//                   You can no longer send messages in this group.
-//                 </div>
-//               )}
-//             </div>
-//           </>
-//         ) : (
-//           <div className="flex-1 flex items-center justify-center text-gray-400">
-//             Select a group to start chatting
-//           </div>
-//         )}
-//       </div>
-
-//       {/* Right Sidebar */}
-//       {selectedGroup && (
-//         <div className="w-1/4 bg-gray-50 border-l p-3 overflow-y-auto">
-//           <h3 className="font-bold mb-2">Members</h3>
-//           <ul>
-//             {selectedGroup.members.map((m) => (
-//               <li key={m} className="flex justify-between mb-1">
-//                 <span>
-//                   {m} {selectedGroup.admins?.includes(m) && "👑"}
-//                 </span>
-//                 {selectedGroup.admins?.includes(userId) && m !== userId && (
-//                   <button
-//                     onClick={() => removeMember(m)}
-//                     className="text-red-500 text-xs"
-//                   >
-//                     Remove
-//                   </button>
-//                 )}
-//               </li>
-//             ))}
-//           </ul>
-
-//           {selectedGroup.admins?.includes(userId) && (
-//             <div className="mt-4">
-//               <h4 className="font-semibold mb-2">➕ Add Members</h4>
-//               <input
-//                 placeholder="New member IDs (comma)"
-//                 className="w-full border p-1 mb-2"
-//                 onBlur={(e) =>
-//                   addMembers(e.target.value.split(",").map((x) => x.trim()))
-//                 }
-//               />
-
-//               <h4 className="font-semibold mb-2 mt-4">✏️ Edit Group</h4>
-//               <input
-//                 className="w-full border mb-2 p-1"
-//                 value={editName}
-//                 onChange={(e) => setEditName(e.target.value)}
-//               />
-//               <input
-//                 className="w-full border mb-2 p-1"
-//                 value={editDesc}
-//                 onChange={(e) => setEditDesc(e.target.value)}
-//               />
-//               <button
-//                 className="bg-blue-600 text-white w-full py-1 rounded mb-2"
-//                 onClick={updateGroup}
-//               >
-//                 Save Changes
-//               </button>
-
-//               <button
-//                 className="bg-red-600 text-white w-full py-1 rounded"
-//                 onClick={deleteGroup}
-//               >
-//                 Delete Group
-//               </button>
-//             </div>
-//           )}
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-
 // src/components/GroupChat.jsx
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import FilePreview from "./FilePreview";
+
 import * as signalR from "@microsoft/signalr";
 
 export default function GroupChat({ jwt, userId }) {
@@ -482,6 +18,8 @@ export default function GroupChat({ jwt, userId }) {
   // Composer state
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [showFilePicker, setShowFilePicker] = useState(false);
+const [isPinning, setIsPinning] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
 
   // Create/Edit group state
@@ -570,7 +108,7 @@ export default function GroupChat({ jwt, userId }) {
             if (!visibleMsgIdsRef.current.has(mid)) {
               visibleMsgIdsRef.current.add(mid);
               try {
-                await fetch("http://localhost:4002/groups/messages/read", {
+                await fetch(`http://localhost:4002/groups/messages/read`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -624,7 +162,7 @@ export default function GroupChat({ jwt, userId }) {
         // If this message came from someone else, mark delivered immediately
         if (msg.senderId !== userId && msg.status === "sent") {
           try {
-            await fetch("http://localhost:4002/groups/messages/delivered", {
+            await fetch(`http://localhost:4002/groups/messages/delivered`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -661,12 +199,14 @@ export default function GroupChat({ jwt, userId }) {
         }
 
         if (!replaced) {
-  setMessages((prev) => {
-    // 🧩 Prevent duplicates (same messageId already exists)
-    if (prev.some((m) => m.messageId === msg.messageId)) return prev;
-    return [...prev, msg];
-  });
-}
+          setMessages((prev) => {
+            // 🧩 Prevent duplicates (same messageId already exists)
+            if (prev.some((m) => m.messageId === msg.messageId)) return prev;
+            // Ensure atomic update
+            const updated = [...prev, msg];
+            return updated;
+          });
+        }
 
       });
 
@@ -686,14 +226,29 @@ export default function GroupChat({ jwt, userId }) {
           prev.map((m) =>
             m.messageId === messageId
               ? {
-                  ...m,
-                  content: forEveryone ? "🗑️ message deleted" : "",
-                  deleted: true,
-                }
+                ...m,
+                content: forEveryone ? "🗑️ message deleted" : "",
+                deleted: true,
+              }
               : m
           )
         );
       });
+
+      conn.on("reactionUpdated", ({ groupId, messageId, emoji, users }) => {
+        if (groupId !== selectedGroupRef.current?.groupId) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.messageId === messageId
+              ? {
+                ...m,
+                reactions: { ...(m.reactions || {}), [emoji]: users },
+              }
+              : m
+          )
+        );
+      });
+
 
       // ✓ receipts
       conn.on("messageReceipt", ({ messageId, status, from, groupId }) => {
@@ -702,15 +257,15 @@ export default function GroupChat({ jwt, userId }) {
           prev.map((m) =>
             m.messageId === messageId
               ? {
-                  ...m,
-                  status,
-                  deliveredTo:
-                    status === "delivered"
-                      ? [...(m.deliveredTo || []), from]
-                      : m.deliveredTo,
-                  readBy:
-                    status === "read" ? [...(m.readBy || []), from] : m.readBy,
-                }
+                ...m,
+                status,
+                deliveredTo:
+                  status === "delivered"
+                    ? [...(m.deliveredTo || []), from]
+                    : m.deliveredTo,
+                readBy:
+                  status === "read" ? [...(m.readBy || []), from] : m.readBy,
+              }
               : m
           )
         );
@@ -736,26 +291,46 @@ export default function GroupChat({ jwt, userId }) {
       });
 
       // Group meta updates
-      conn.on("groupUpdated", (evt) => {
+      conn.on("groupUpdated", async (evt) => {
         // server should emit { type: "...", groupId, memberId? }
-        if (
-          evt.type === "groupDeleted" &&
-          evt.groupId === selectedGroupRef.current?.groupId
-        ) {
+        const openGroupId = selectedGroupRef.current?.groupId;
+
+        if (evt.type === "groupDeleted" && evt.groupId === openGroupId) {
           alert("🚨 Group deleted by admin");
           setSelectedGroup(null);
           setMessages([]);
-        } else if (
-          evt.type === "memberRemoved" &&
-          evt.groupId === selectedGroupRef.current?.groupId &&
-          evt.memberId === userId
-        ) {
+          return;
+        }
+
+        if (evt.type === "memberRemoved" && evt.groupId === openGroupId && evt.memberId === userId) {
           alert("🚫 You were removed from this group");
           setSelectedGroup(null);
           setMessages([]);
+          return;
         }
-        fetchGroups();
+
+        if (evt.type === "messagePinned" && evt.groupId === openGroupId) {
+          setSelectedGroup((prev) => ({
+            ...prev,
+            pinnedMessage: evt.pinned,
+          }));
+        }
+
+        if (evt.type === "unpinned" && evt.groupId === openGroupId) {
+          setSelectedGroup((prev) => ({
+            ...prev,
+            pinnedMessage: null,
+          }));
+        }
+
+        // Re-fetch group info only for metadata changes (name, description, members)
+        if (["groupDeleted", "memberAdded", "memberRemoved", "groupUpdated"].includes(evt.type)) {
+          await fetchGroupDetails(openGroupId);
+        }
+
+        fetchGroups(); // refresh sidebar list
       });
+
 
       await conn.start();
       setConnection(conn);
@@ -778,6 +353,31 @@ export default function GroupChat({ jwt, userId }) {
     }
   };
 
+  //   const fetchGroupDetails = async (groupId) => {
+  //     try {
+  //       const g = await fetch(`http://localhost:4002/groups/${groupId}`, {
+  //         headers: { Authorization: `Bearer ${jwt}` },
+  //       });
+  //       const gd = await g.json();
+  //       if (!gd.success) return;
+
+  //       setSelectedGroup(gd.group);
+  //       setEditName(gd.group.name);
+  //       setEditDesc(gd.group.description);
+
+  //       // You can post only if you're still a member & canPost isn’t disabled by server
+  // const allowed = gd.group.canPost !== false && Array.isArray(gd.group.members) && gd.group.members.includes(userId);
+  //       setCanPost(allowed);
+
+  //       // Clear messages; from now, only real-time flow fills them
+  //       setMessages([]);
+  //       setDrawerOpen(false); // close drawer when switching groups
+  //     } catch (e) {
+  //       console.error("fetchGroupDetails error:", e);
+  //     }
+  //   };
+
+
   const fetchGroupDetails = async (groupId) => {
     try {
       const g = await fetch(`http://localhost:4002/groups/${groupId}`, {
@@ -791,16 +391,15 @@ export default function GroupChat({ jwt, userId }) {
       setEditDesc(gd.group.description);
 
       // You can post only if you're still a member & canPost isn’t disabled by server
-      const allowed = (gd.group.canPost !== false) && (gd.group.members || []).includes(userId);
+      const allowed = gd.group.canPost !== false && Array.isArray(gd.group.members) && gd.group.members.includes(userId);
       setCanPost(allowed);
 
-      // Clear messages; from now, only real-time flow fills them
-      setMessages([]);
       setDrawerOpen(false); // close drawer when switching groups
     } catch (e) {
       console.error("fetchGroupDetails error:", e);
     }
   };
+
 
   /* ------------------ Admin actions (EXISTING endpoints) ------------------ */
   // ADD members: POST /groups/:groupId/members  { memberIds: [] }
@@ -876,6 +475,23 @@ export default function GroupChat({ jwt, userId }) {
     }
   };
 
+  // 🆕 Remove Admin
+  const removeAdmin = async (memberId) => {
+    if (!selectedGroup) return;
+    if (!window.confirm("Remove this member as admin?")) return;
+    try {
+      await fetch(`http://localhost:4002/groups/${selectedGroup.groupId}/remove-admin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ memberId }),
+      });
+      fetchGroupDetails(selectedGroup.groupId);
+    } catch (e) {
+      console.error("removeAdmin error:", e);
+    }
+  };
+
+
   // LEAVE group: POST /groups/:groupId/leave
   const leaveGroup = async () => {
     if (!selectedGroup) return;
@@ -935,7 +551,122 @@ export default function GroupChat({ jwt, userId }) {
     }
   };
 
+  // File validation (reuse from one-to-one chat)
+  const handleFileSelect = (event) => {
+    const files = Array.from(event.target.files);
+    const maxSize = 100 * 1024 * 1024;
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "video/mp4",
+      "video/mov",
+      "video/webm",
+      "audio/mp3",
+      "audio/wav",
+      "audio/aac",
+      "application/pdf",
+      "text/plain",
+    ];
+
+    const validFiles = [];
+    const errors = [];
+
+    files.forEach((file) => {
+      if (file.size > maxSize) {
+        errors.push(`${file.name}: Too large (>100MB)`);
+      } else if (!allowedTypes.includes(file.type.toLowerCase())) {
+        errors.push(`${file.name}: Not supported`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (errors.length > 0) alert(errors.join("\n"));
+    if (validFiles.length > 0) {
+      setSelectedFiles(validFiles);
+      setShowFilePicker(true);
+    }
+  };
+  // 🆕 Reply to message (set or cancel reply target)
+  const startReply = (msg) => {
+    setReplyingTo(msg);
+    scrollToBottom();
+  };
+
+  const cancelReply = () => setReplyingTo(null);
+
+
   /* ------------------ Messaging ------------------ */
+  // const sendMessage = async () => {
+  //   if (!selectedGroup || !canPost) {
+  //     if (!isMember) alert("You are not a member of this group.");
+  //     return;
+  //   }
+  //   if (!text.trim() && selectedFiles.length === 0) return;
+
+  //   const headers = { Authorization: `Bearer ${jwt}` };
+  //   let body;
+  //   let endpoint = `http://localhost:4002/groups/${selectedGroup.groupId}/messages`;
+
+  //   // Optimistic bubble for sender
+  //   const tempId = "local-" + Date.now();
+  //   const now = new Date().toISOString();
+  //   const optimistic = {
+  //     messageId: tempId,
+  //     groupId: selectedGroup.groupId,
+  //     isGroup: true,
+  //     senderId: userId,
+  //     content: text,
+  //     attachments: [],
+  //     createdAt: now,
+  //     status: "sent",
+  //     isLocal: true,
+  //   };
+  //   setMessages((prev) => [...prev, optimistic]);
+  //   pendingLocalIdsRef.current[tempId] = { content: text, createdAt: now };
+
+  //   try {
+  //     if (selectedFiles.length > 0) {
+  //       const fd = new FormData();
+  //       fd.append("content", text);
+  //       selectedFiles.forEach((file) => {
+  //         fd.append("media", file);
+  //       });
+
+  //       // choose correct endpoint
+  //       endpoint += selectedFiles.length > 1 ? "/multiple-media" : "/media";
+  //       body = fd;
+  //     }
+  //     else {
+  //       headers["Content-Type"] = "application/json";
+  //       body = JSON.stringify({
+  //         content: text,
+  //         ...(replyingTo && { replyToMessageId: replyingTo.messageId }),
+  //       });
+  //     }
+
+  //     await fetch(endpoint, { method: "POST", headers, body });
+  //     // server broadcast will replace/append the final message
+  //   } catch (e) {
+  //     console.error("sendMessage error:", e);
+  //     // mark optimistic as failed
+  //     setMessages((prev) =>
+  //       prev.map((m) => (m.messageId === tempId ? { ...m, status: "failed" } : m))
+  //     );
+  //   } finally {
+  //     setShowFilePicker(false);
+  //     if (fileInputRef.current) fileInputRef.current.value = "";
+  //     setText("");
+  //     setSelectedFiles([]);
+  //     setReplyingTo(null);
+  //   }
+  // };
+
+
+
   const sendMessage = async () => {
     if (!selectedGroup || !canPost) {
       if (!isMember) alert("You are not a member of this group.");
@@ -956,21 +687,34 @@ export default function GroupChat({ jwt, userId }) {
       isGroup: true,
       senderId: userId,
       content: text,
-      attachments: [],
+      attachments: selectedFiles.map((file) => ({
+        fileName: file.name,
+        fileType: file.type.split("/")[0],
+        url: URL.createObjectURL(file), // Temporary URL for optimistic preview
+      })),
       createdAt: now,
-      status: "sent",
+      status: "sending",
       isLocal: true,
     };
     setMessages((prev) => [...prev, optimistic]);
     pendingLocalIdsRef.current[tempId] = { content: text, createdAt: now };
 
+    // Clear inputs immediately for snappy UI
+    setText("");
+    setSelectedFiles([]);
+    setShowFilePicker(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setReplyingTo(null);
+
     try {
       if (selectedFiles.length > 0) {
         const fd = new FormData();
         fd.append("content", text);
-        selectedFiles.forEach((f) => fd.append("media", f));
+        selectedFiles.forEach((file) => {
+          fd.append("media", file);
+        });
+        endpoint += selectedFiles.length > 1 ? "/multiple-media" : "/media";
         body = fd;
-        endpoint += "/media";
       } else {
         headers["Content-Type"] = "application/json";
         body = JSON.stringify({
@@ -979,18 +723,14 @@ export default function GroupChat({ jwt, userId }) {
         });
       }
 
-      await fetch(endpoint, { method: "POST", headers, body });
-      // server broadcast will replace/append the final message
+      const res = await fetch(endpoint, { method: "POST", headers, body });
+      if (!res.ok) throw new Error("Failed to send message");
+      // Server broadcast will replace/append the final message
     } catch (e) {
       console.error("sendMessage error:", e);
-      // mark optimistic as failed
       setMessages((prev) =>
         prev.map((m) => (m.messageId === tempId ? { ...m, status: "failed" } : m))
       );
-    } finally {
-      setText("");
-      setSelectedFiles([]);
-      setReplyingTo(null);
     }
   };
 
@@ -1020,6 +760,22 @@ export default function GroupChat({ jwt, userId }) {
     }
   };
 
+  // 🆕 Delete for Me (local delete)
+  const deleteMessageForMe = async (msgId) => {
+    if (!window.confirm("Delete this message only for you?")) return;
+    try {
+      await fetch(`http://localhost:4002/groups/messages/${msgId}/delete-for-me`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      // locally hide
+      setMessages((prev) => prev.filter((m) => m.messageId !== msgId));
+    } catch (e) {
+      console.error("deleteMessageForMe error:", e);
+    }
+  };
+
+
   const reactToMessage = async (msgId, emoji) => {
     try {
       await fetch(`http://localhost:4002/groups/messages/${msgId}/react`, {
@@ -1031,6 +787,49 @@ export default function GroupChat({ jwt, userId }) {
       console.error("reactToMessage error:", e);
     }
   };
+
+
+  // 🆕 Get info (who delivered/read)
+  const viewMessageInfo = async (msgId) => {
+    try {
+      const res = await fetch(`http://localhost:4002/groups/messages/${msgId}/info`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      const data = await res.json();
+      alert(
+        `📨 Delivered to:\n${data.deliveredTo?.join(", ") || "none"}\n\n👀 Read by:\n${data.readBy?.join(", ") || "none"}`
+      );
+    } catch (e) {
+      console.error("viewMessageInfo error:", e);
+    }
+  };
+
+
+const pinMessage = async (msgId) => {
+  setIsPinning(true);
+  try {
+    const res = await fetch(`http://localhost:4002/groups/${selectedGroup.groupId}/messages/pin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({ messageId: msgId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (data.unpinned) {
+        setSelectedGroup((prev) => ({ ...prev, pinnedMessage: null }));
+      } else {
+        setSelectedGroup((prev) => ({ ...prev, pinnedMessage: data.pinned }));
+      }
+    } else {
+      alert("Failed to pin/unpin message: " + data.error);
+    }
+  } catch (e) {
+    console.error("pinMessage error:", e);
+    alert("Error pinning/unpinning message");
+  } finally {
+    setIsPinning(false);
+  }
+};
 
   /* ------------------ Mount ------------------ */
   useEffect(() => {
@@ -1051,11 +850,10 @@ export default function GroupChat({ jwt, userId }) {
           <div
             key={g.groupId}
             onClick={() => fetchGroupDetails(g.groupId)}
-            className={`p-2 rounded cursor-pointer mb-2 ${
-              selectedGroup?.groupId === g.groupId
-                ? "bg-blue-500 text-white"
-                : "hover:bg-gray-200"
-            }`}
+            className={`p-2 rounded cursor-pointer mb-2 ${selectedGroup?.groupId === g.groupId
+              ? "bg-blue-500 text-white"
+              : "hover:bg-gray-200"
+              }`}
           >
             {g.name}
           </div>
@@ -1097,6 +895,32 @@ export default function GroupChat({ jwt, userId }) {
           <>
             {/* Header */}
             <div className="p-3 border-b bg-white flex justify-between items-center">
+              {selectedGroup.pinnedMessage && (
+  <div
+    className="bg-yellow-100 border-b border-yellow-300 text-sm p-2 flex justify-between items-center cursor-pointer hover:bg-yellow-200"
+    onClick={() =>
+      document
+        .getElementById(`msg-${selectedGroup.pinnedMessage.messageId}`)
+        ?.scrollIntoView({ behavior: "smooth" })
+    }
+  >
+    <span>
+      📌 <b>{selectedGroup.pinnedMessage.senderId}</b>:{" "}
+      {selectedGroup.pinnedMessage.content}
+    </span>
+    <button
+      onClick={async (e) => {
+        e.stopPropagation();
+        await pinMessage(selectedGroup.pinnedMessage.messageId);
+      }}
+      className="text-xs text-gray-600 hover:text-red-500"
+      disabled={isPinning}
+    >
+      {isPinning ? "Unpinning..." : "Unpin ✖"}
+    </button>
+  </div>
+)}
+
               <div className="min-w-0">
                 <h2 className="font-bold truncate">{selectedGroup.name}</h2>
                 <p className="text-sm text-gray-500 truncate">
@@ -1137,17 +961,18 @@ export default function GroupChat({ jwt, userId }) {
                   data-sender={m.senderId}
                   data-status={m.status}
                   id={`msg-${m.messageId}`}
-                  className={`mb-3 flex ${
-                    m.senderId === userId ? "justify-end" : "justify-start"
-                  }`}
+                  className={`mb-3 flex ${m.senderId === userId ? "justify-end" : "justify-start"
+                    }`}
                 >
                   <div
-                    className={`max-w-xs px-3 py-2 rounded-lg shadow ${
-                      m.senderId === userId
+                    className={`max-w-xs px-3 py-2 rounded-lg shadow ${m.messageType === "system"
+                      ? "bg-gray-300 text-gray-800 italic text-center"
+                      : m.senderId === userId
                         ? "bg-blue-500 text-white"
                         : "bg-white border"
-                    }`}
+                      }`}
                   >
+
                     {/* Sender name for others */}
                     {m.senderId !== userId && (
                       <div className="text-xs font-bold mb-1">
@@ -1183,74 +1008,136 @@ export default function GroupChat({ jwt, userId }) {
                         <div key={idx} className="mt-1">
                           {a.fileType === "image" ? (
                             <img
-                              src={a.url}
+                              src={decodeURI(a.url)}
                               alt={a.fileName}
-                              className="max-h-40 rounded"
+                              className="max-h-40 rounded border cursor-pointer mb-1"
+                              onClick={() => window.open(a.url, "_blank")}
+                            />
+                          ) : a.fileType === "video" ? (
+                            <video
+                              controls
+                              src={decodeURI(a.url)}
+                              className="max-h-40 rounded border mb-1"
                             />
                           ) : (
                             <a
-                              href={a.url}
+                              href={decodeURI(a.url)}
                               target="_blank"
                               rel="noreferrer"
-                              className="underline text-sm"
+                              className="block underline text-sm text-white hover:text-gray-200 mb-1"
                             >
-                              {a.fileName}
+                              📎 {a.fileName}
                             </a>
                           )}
+
                         </div>
                       ))}
 
-                    {/* Actions (only own messages) */}
-                    {m.senderId === userId && !m.deleted && (
-                      <div className="text-right mt-1 space-x-2 text-xs opacity-70">
-                        <button
-                          onClick={() =>
-                            editMessage(
-                              m.messageId,
-                              prompt("Edit message:", m.content || "")
-                            )
-                          }
-                          title="Edit"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => deleteMessage(m.messageId)}
-                          title="Delete for Everyone"
-                        >
-                          🗑️
-                        </button>
-                        <button
-                          onClick={() => reactToMessage(m.messageId, "❤️")}
-                          title="React"
-                        >
-                          ❤️
-                        </button>
+                    {/* {m.reactions && Object.keys(m.reactions).length > 0 && (
+                      <div className="flex space-x-1 mt-1 text-xs">
+                        {Object.entries(m.reactions).map(([emoji, users]) => (
+                          <span
+                            key={emoji}
+                            className="bg-gray-200 px-1 rounded cursor-pointer hover:bg-gray-300"
+                            title={users.map((u) => selectedGroup.members.includes(u) ? u : "user").join(", ")}
+                          >
+                            {emoji} {users.length}
+                          </span>
+                        ))}
+                      </div>
+                    )} */}
+
+
+                    {/* Reactions Display */}
+                    {m.reactions && Object.keys(m.reactions).length > 0 && (
+                      <div className="flex space-x-1 mt-1 text-xs">
+                        {Object.entries(m.reactions).map(([emoji, users]) => (
+                          <span
+                            key={emoji}
+                            className="bg-gray-200 px-1 rounded cursor-pointer hover:bg-gray-300"
+                            title={users.join(", ")} // backend now sends phone numbers
+                          >
+                            {emoji} {users.length}
+                          </span>
+                        ))}
                       </div>
                     )}
 
+
+
+
+                    {/* Actions (only own messages) */}
+                    {!m.deleted && (
+                      <div className="text-right mt-1 space-x-2 text-xs opacity-70">
+                        {/* Actions for everyone */}
+                        <button onClick={() => setReplyingTo(m)} title="Reply">↩️</button>
+                        <button onClick={() => reactToMessage(m.messageId, "❤️")} title="React">❤️</button>
+                        <button onClick={() => pinMessage(m.messageId)} title="Pin">📌</button>
+
+                        {/* Only sender */}
+                        {m.senderId === userId && (
+                          <>
+                            <button onClick={() => editMessage(m.messageId, prompt("Edit message:", m.content || ""))}>✏️</button>
+                            <button onClick={() => deleteMessage(m.messageId)}>🗑️ Everyone</button>
+                            <button onClick={() => viewMessageInfo(m.messageId)}>ℹ️</button>
+                          </>
+                        )}
+
+                        {/* Delete for me (always allowed) */}
+                        <button onClick={() => deleteMessageForMe(m.messageId)}>🗑️ Me</button>
+                      </div>
+                    )}
+
+
                     {/* Ticks */}
                     {m.senderId === userId && (
+
                       <div className="text-right text-xs mt-1 select-none">
                         {m.status === "sent" && "✓"}
                         {m.status === "delivered" && "✓✓"}
-                        {m.status === "read" && (
-                          <span className="text-blue-400 font-bold">✓✓</span>
-                        )}
-                        {m.status === "failed" && (
-                          <span className="text-red-500">failed</span>
-                        )}
+                        {m.status === "read" && <span className="text-blue-400 font-bold">✓✓</span>}
+                        {m.status === "failed" && <span className="text-red-500">failed</span>}
                       </div>
                     )}
+
                   </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
 
+
+
+
             {/* Composer */}
             <div className="p-3 border-t bg-white">
+              <FilePreview
+                showFilePicker={showFilePicker}
+                selectedFiles={selectedFiles}
+                setSelectedFiles={setSelectedFiles}
+                setShowFilePicker={setShowFilePicker}
+                fileInputRef={fileInputRef}
+              />
+
+              {/* Reply preview (above input) */}
+              {replyingTo && (
+                <div className="flex justify-between items-center bg-blue-50 border-l-4 border-blue-400 px-3 py-2 mb-2 text-sm rounded">
+                  <div>
+                    Replying to:{" "}
+                    <span className="font-medium">{replyingTo.senderId}</span> —{" "}
+                    <span className="italic">
+                      {replyingTo.content || "[media]"}
+                    </span>
+                  </div>
+                  <button onClick={cancelReply} className="text-red-500 hover:underline">
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {canPost ? (
+
+
                 <div className="flex items-center space-x-2">
                   <input
                     type="text"
@@ -1264,11 +1151,16 @@ export default function GroupChat({ jwt, userId }) {
                     type="file"
                     multiple
                     ref={fileInputRef}
-                    onChange={(e) => setSelectedFiles(Array.from(e.target.files))}
+                    accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                    onChange={handleFileSelect}
                     className="hidden"
                   />
+
                   <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setShowFilePicker(true);
+                    }}
                     className="bg-gray-200 px-3 py-2 rounded"
                     title="Attach"
                   >
@@ -1290,9 +1182,8 @@ export default function GroupChat({ jwt, userId }) {
 
             {/* Right Drawer: Group Info */}
             <div
-              className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl border-l transform transition-transform duration-300 ease-in-out ${
-                drawerOpen ? "translate-x-0" : "translate-x-full"
-              }`}
+              className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl border-l transform transition-transform duration-300 ease-in-out ${drawerOpen ? "translate-x-0" : "translate-x-full"
+                }`}
               style={{ zIndex: 50 }}
             >
               <div className="p-4 border-b flex items-center justify-between">
@@ -1375,13 +1266,21 @@ export default function GroupChat({ jwt, userId }) {
                           <span className="font-medium">{m}</span>{" "}
                           {isThisAdmin && <span title="Admin">👑</span>}
                           {isCreator && <span className="text-xs text-green-600 ml-1">(owner)</span>}
-                          {isSelf && <span className="text-xs text-gray-400"> (you)</span>}
+                          {isSelf && <span className="text-xs text-gray-400"> (me)</span>}
                         </div>
 
                         {isAdmin && !isSelf && (
                           <div className="flex items-center gap-2 text-xs">
                             {/* Only show Make admin if target is not already admin */}
-                            {!isThisAdmin && (
+                            {isThisAdmin ? (
+                              <button
+                                className="px-2 py-0.5 border border-yellow-400 text-yellow-700 rounded hover:bg-yellow-50"
+                                onClick={() => removeAdmin(m)}
+                                title="Remove admin"
+                              >
+                                Remove admin
+                              </button>
+                            ) : (
                               <button
                                 className="px-2 py-0.5 border rounded hover:bg-gray-50"
                                 onClick={() => makeAdmin(m)}
@@ -1390,6 +1289,7 @@ export default function GroupChat({ jwt, userId }) {
                                 Make admin
                               </button>
                             )}
+
 
                             {/* Remove: cannot remove admins, and cannot remove the creator */}
                             {!isThisAdmin && !isCreator && (
