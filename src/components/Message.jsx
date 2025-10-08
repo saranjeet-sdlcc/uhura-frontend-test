@@ -17,6 +17,7 @@
 //     deleteForMe,
 //     deleteForEveryone,
 //     toggleSelectMessage,
+//     handleReply, // NEW
 //   } = handlers;
 
 //   const renderAttachments = (attachments) => {
@@ -81,6 +82,28 @@
 //     );
 //   };
 
+//   // NEW: Render reply context
+//   const renderReplyContext = (replyTo) => {
+//     if (!replyTo) return null;
+
+//     const isReplyToOwn = replyTo.senderId === userId;
+    
+//     return (
+//       <div className="mb-2 p-2 rounded border-l-4 border-gray-300 bg-black bg-opacity-10">
+//         <div className="text-xs font-semibold mb-1 opacity-80">
+//           {isReplyToOwn ? "You" : "Them"}
+//         </div>
+//         <div className="text-xs opacity-70 truncate">
+//           {replyTo.content || (
+//             replyTo.attachmentPreview 
+//               ? `${replyTo.attachmentPreview.fileType} ${replyTo.attachmentPreview.count > 1 ? `(${replyTo.attachmentPreview.count} files)` : ''}`
+//               : "Message"
+//           )}
+//         </div>
+//       </div>
+//     );
+//   };
+
 //   const renderMessageContent = (msg) => {
 //     if (msg.isDeletedForEveryone) {
 //       return <i className="opacity-80">This message was deleted</i>;
@@ -91,6 +114,9 @@
 
 //     return (
 //       <div className="space-y-1">
+//         {/* NEW: Show reply context if this is a reply */}
+//         {msg.isReply && msg.replyTo && renderReplyContext(msg.replyTo)}
+        
 //         {hasContent && (
 //           <div>
 //             {msg.content}{" "}
@@ -178,6 +204,16 @@
 //               </div>
 //             </div>
 //             <div className="mt-2 flex justify-end space-x-2 text-xs">
+//               {/* NEW: Reply button (available for all messages) */}
+//               {!message.isDeletedForEveryone && (
+//                 <button
+//                   onClick={() => handleReply(message)}
+//                   className="px-2 py-1 bg-green-200 text-black rounded hover:bg-green-300"
+//                 >
+//                   Reply
+//                 </button>
+//               )}
+              
 //               {isOwner && !message.isDeletedForEveryone && (
 //                 <>
 //                   <button
@@ -208,6 +244,10 @@
 //   );
 // }
 
+
+import { Link } from "react-router-dom"; // INVITE LINK CHANGE: Import Link for client-side routing
+import Linkify from "react-linkify";
+
 export default function Message({
   message,
   userId,
@@ -227,7 +267,7 @@ export default function Message({
     deleteForMe,
     deleteForEveryone,
     toggleSelectMessage,
-    handleReply, // NEW
+    handleReply,
   } = handlers;
 
   const renderAttachments = (attachments) => {
@@ -292,7 +332,6 @@ export default function Message({
     );
   };
 
-  // NEW: Render reply context
   const renderReplyContext = (replyTo) => {
     if (!replyTo) return null;
 
@@ -322,14 +361,48 @@ export default function Message({
     const hasContent = msg.content && msg.content.trim();
     const hasAttachments = msg.attachments && msg.attachments.length > 0;
 
+    // INVITE LINK CHANGE: Custom parser for invite links
+    const renderContentWithLinks = (content) => {
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const parts = content.split(urlRegex);
+      return parts.map((part, index) => {
+        if (urlRegex.test(part) && part.includes("/groups/invite/")) {
+          const path = part.replace(/^https?:\/\/[^\/]+/, ""); // Extract path (e.g., /groups/invite/<token>/join)
+          return (
+            <Link
+              key={index}
+              to={path}
+              className="text-blue-600 bg-blue-100 px-2 py-1 rounded flex items-center space-x-1 hover:bg-blue-200"
+            >
+              <span className="text-lg" role="img" aria-label="group">
+                👥
+              </span>
+              <span>Join Group</span>
+            </Link>
+          );
+        } else if (urlRegex.test(part)) {
+          return (
+            <a
+              key={index}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              {part}
+            </a>
+          );
+        }
+        return part;
+      });
+    };
+
     return (
       <div className="space-y-1">
-        {/* NEW: Show reply context if this is a reply */}
         {msg.isReply && msg.replyTo && renderReplyContext(msg.replyTo)}
-        
         {hasContent && (
           <div>
-            {msg.content}{" "}
+            {renderContentWithLinks(msg.content)}{" "}
             {msg.isEdited && (
               <span className="text-xs opacity-70"> (edited)</span>
             )}
@@ -414,7 +487,6 @@ export default function Message({
               </div>
             </div>
             <div className="mt-2 flex justify-end space-x-2 text-xs">
-              {/* NEW: Reply button (available for all messages) */}
               {!message.isDeletedForEveryone && (
                 <button
                   onClick={() => handleReply(message)}
@@ -423,7 +495,6 @@ export default function Message({
                   Reply
                 </button>
               )}
-              
               {isOwner && !message.isDeletedForEveryone && (
                 <>
                   <button
