@@ -23,6 +23,7 @@ export default function ChatPanel({
   selectedConversation,
   replyingTo,
   setReplyingTo,
+  conversations, // ADD THIS
 }) {
   // NEW: Translation state
   const [currentLanguage, setCurrentLanguage] = useState("none");
@@ -30,7 +31,20 @@ export default function ChatPanel({
   const [availableLanguages, setAvailableLanguages] = useState([]);
   const [loadingLanguages, setLoadingLanguages] = useState(false);
 
+  const [typingTimeout, setTypingTimeout] = useState(null);
+
+
+
+  // Add this useEffect at the top level of ChatPanel component
+useEffect(() => {
+  return () => {
+    if (typingTimeout) clearTimeout(typingTimeout);
+  };
+}, [typingTimeout]);
+
+
   // NEW: Fetch current language preference on mount
+
   useEffect(() => {
     fetchLanguagePreference();
   }, [jwt]);
@@ -186,6 +200,33 @@ export default function ChatPanel({
       </div>
     );
   };
+
+
+  // Send typing indicator
+const handleTypingIndicator = (isTyping) => {
+  if (!recipientId || !jwt) return;
+  
+  // Find conversation ID
+  const conversation = conversations?.find(
+    conv => conv.otherUser?.userId === recipientId
+  );
+  
+  if (!conversation) return;
+
+  fetch("http://localhost:4002/presence/typing", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt}`,
+    },
+    body: JSON.stringify({
+      conversationId: conversation.conversationId,
+      recipientId: recipientId,
+      isTyping: isTyping,
+    }),
+  }).catch(err => console.warn("Typing indicator failed:", err));
+};
+
 
   const sendMessage = async () => {
     if (!message.trim() && selectedFiles.length === 0) return;
@@ -347,12 +388,46 @@ export default function ChatPanel({
         
         <div>
           <label className="block text-sm font-medium mb-1">Message</label>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          />
+         
+
+         <input
+  className="w-full border rounded px-3 py-2"
+  value={message}
+  onChange={(e) => {
+    setMessage(e.target.value);
+    
+    // Typing indicator logic
+    if (e.target.value.trim()) {
+      handleTypingIndicator(true);
+      
+      // Clear previous timeout
+      if (typingTimeout) clearTimeout(typingTimeout);
+      
+      // Set new timeout to stop typing after 3 seconds
+      const timeout = setTimeout(() => {
+        handleTypingIndicator(false);
+      }, 3000);
+      
+      setTypingTimeout(timeout);
+    } else {
+      handleTypingIndicator(false);
+      if (typingTimeout) clearTimeout(typingTimeout);
+    }
+  }}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      handleTypingIndicator(false);
+      if (typingTimeout) clearTimeout(typingTimeout);
+      sendMessage();
+    }
+  }}
+  onBlur={() => {
+    handleTypingIndicator(false);
+    if (typingTimeout) clearTimeout(typingTimeout);
+  }}
+/>
+
+
         </div>
         
         <div className="space-y-2">

@@ -332,7 +332,6 @@
 //   );
 // }
 
-
 import { useEffect, useState, useRef } from "react";
 import * as signalR from "@microsoft/signalr";
 import AuthForm from "./components/AuthForm";
@@ -372,9 +371,12 @@ export default function App() {
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
 
+  const [userPresence, setUserPresence] = useState({});
+  const [typingUsers, setTypingUsers] = useState({}); // { conversationId: { userId: timestamp } }
+
   // ADD: Call states
-  const [callState, setCallState] = useState('None');
-  const [activeTab, setActiveTab] = useState('chat'); // 'chat' or 'call'
+  const [callState, setCallState] = useState("None");
+  const [activeTab, setActiveTab] = useState("chat"); // 'chat' or 'call'
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -383,6 +385,90 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     console.log("Message state: ", messages);
   }, [messages]);
+
+  // Presence management
+  // Presence management
+  useEffect(() => {
+    if (!connected || !jwt) return;
+
+    // Set online when connected
+    fetch("http://localhost:4002/presence/online", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}` },
+    }).catch((err) => console.warn("Set online failed:", err));
+
+    // Heartbeat every 15 seconds (half of TTL)
+    const heartbeatInterval = setInterval(() => {
+      fetch("http://localhost:4002/presence/heartbeat", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}` },
+      }).catch((err) => console.warn("Heartbeat failed:", err));
+    }, 15000); // Changed to 15 seconds
+
+    // Handle tab close, browser close, or navigation away
+    const handleBeforeUnload = () => {
+      // Use sendBeacon for reliable offline notification
+      const blob = new Blob([JSON.stringify({})], { type: "application/json" });
+      navigator.sendBeacon("http://localhost:4002/presence/offline", blob);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // User switched tabs or minimized
+        fetch("http://localhost:4002/presence/offline", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jwt}` },
+          keepalive: true, // Ensure request completes even if page is closing
+        }).catch((err) => console.warn("Set offline failed:", err));
+      } else {
+        // User came back to tab
+        fetch("http://localhost:4002/presence/online", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jwt}` },
+        }).catch((err) => console.warn("Set online failed:", err));
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Set offline on unmount/disconnect
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      // Final offline call
+      navigator.sendBeacon(
+        "http://localhost:4002/presence/offline",
+        new Blob([JSON.stringify({})], { type: "application/json" })
+      );
+    };
+  }, [connected, jwt]);
+
+  // Clean up typing indicators
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      setTypingUsers((prev) => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach((convId) => {
+          Object.keys(updated[convId]).forEach((uid) => {
+            if (now - updated[convId][uid] > 10000) {
+              delete updated[convId][uid];
+            }
+          });
+          if (Object.keys(updated[convId]).length === 0) {
+            delete updated[convId];
+          }
+        });
+        return updated;
+      });
+    }, 2000);
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   const postReceipt = async (endpoint, body) => {
     try {
@@ -497,6 +583,61 @@ export default function App() {
         });
       });
 
+      // Inside connectToSignalR function, after existing handlers:
+
+      // Handle presence updates
+      // Handle presence updates
+      newConnection.on("presenceUpdate", (data) => {
+        console.log("👁 Presence update received:", data);
+        console.log(
+          "User:",
+          data.userId,
+          "Online:",
+          data.online,
+          "Last seen:",
+          data.lastSeenAt
+        );
+
+        setUserPresence((prev) => {
+          const updated = {
+            ...prev,
+            [data.userId]: {
+              online: data.online,
+              lastSeenAt: data.lastSeenAt,
+            },
+          };
+          console.log("Updated userPresence state:", updated);
+          return updated;
+        });
+      });
+
+      // Handle typing status
+      newConnection.on("typingStatus", (data) => {
+        console.log("⌨ Typing status:", data);
+        const { fromUserId, conversationId, isTyping } = data;
+
+        if (isTyping) {
+          setTypingUsers((prev) => ({
+            ...prev,
+            [conversationId]: {
+              ...prev[conversationId],
+              [fromUserId]: Date.now(),
+            },
+          }));
+        } else {
+          setTypingUsers((prev) => {
+            const updated = { ...prev };
+            if (updated[conversationId]) {
+              delete updated[conversationId][fromUserId];
+              if (Object.keys(updated[conversationId]).length === 0) {
+                delete updated[conversationId];
+              }
+            }
+            return updated;
+          });
+        }
+      });
+
       await newConnection.start();
       setConnection(newConnection);
       setConnected(true);
@@ -564,19 +705,19 @@ export default function App() {
   // ADD: Call state change handler
   const handleCallStateChange = (newState) => {
     setCallState(newState);
-    console.log('📞 Call state changed to:', newState);
-    
+    console.log("📞 Call state changed to:", newState);
+
     // Auto-switch to call tab when call starts
-    if (newState === 'Connecting' || newState === 'Ringing') {
-      setActiveTab('call');
+    if (newState === "Connecting" || newState === "Ringing") {
+      setActiveTab("call");
     }
-    
+
     // Switch back to chat when call ends
-    if (newState === 'None' || newState === 'Disconnected') {
+    if (newState === "None" || newState === "Disconnected") {
       // Optionally switch back to chat tab after a delay
       setTimeout(() => {
-        if (callState === 'Disconnected') {
-          setActiveTab('chat');
+        if (callState === "Disconnected") {
+          setActiveTab("chat");
         }
       }, 2000);
     }
@@ -603,6 +744,7 @@ export default function App() {
     selectedConversation,
     replyingTo,
     setReplyingTo,
+    conversations, // ADD THIS
   };
 
   const conversationListProps = {
@@ -613,8 +755,11 @@ export default function App() {
     fetchConversations,
     fetchConversationMessages,
     userId,
+    userPresence,
+    setUserPresence,
+    typingUsers,
+    jwt,
   };
-
   const liveMessagesProps = {
     messages,
     conversationMessages,
@@ -650,7 +795,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-6xl mx-auto bg-white shadow p-6 rounded">
         <h1 className="text-2xl font-bold mb-4">
-          🔗 Chat & Call Tester {callState !== 'None' && `(📞 ${callState})`}
+          🔗 Chat & Call Tester {callState !== "None" && `(📞 ${callState})`}
         </h1>
 
         {!authData && !connected ? (
@@ -673,39 +818,39 @@ export default function App() {
             {/* ADD: Tab Navigation */}
             <div className="flex space-x-4 mb-6 border-b">
               <button
-                onClick={() => setActiveTab('chat')}
+                onClick={() => setActiveTab("chat")}
                 className={`pb-2 px-4 font-medium ${
-                  activeTab === 'chat'
-                    ? 'border-b-2 border-blue-500 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-800'
+                  activeTab === "chat"
+                    ? "border-b-2 border-blue-500 text-blue-600"
+                    : "text-gray-600 hover:text-gray-800"
                 }`}
               >
                 💬 Chat
               </button>
               <button
-                onClick={() => setActiveTab('call')}
+                onClick={() => setActiveTab("call")}
                 className={`pb-2 px-4 font-medium ${
-                  activeTab === 'call'
-                    ? 'border-b-2 border-blue-500 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-800'
+                  activeTab === "call"
+                    ? "border-b-2 border-blue-500 text-blue-600"
+                    : "text-gray-600 hover:text-gray-800"
                 }`}
               >
-                📞 Calls {callState !== 'None' && `(${callState})`}
+                📞 Calls {callState !== "None" && `(${callState})`}
               </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Panel */}
               <div className="lg:col-span-1 space-y-6">
-                {activeTab === 'chat' ? (
+                {activeTab === "chat" ? (
                   <>
                     <ChatPanel {...chatPanelProps} />
                     <ConversationList {...conversationListProps} />
                     <BulkActions {...bulkActionsProps} />
                   </>
                 ) : (
-                  <CallPanel 
-                    jwt={jwt} 
+                  <CallPanel
+                    jwt={jwt}
                     userId={userId}
                     onCallStateChange={handleCallStateChange}
                   />
@@ -713,47 +858,57 @@ export default function App() {
               </div>
 
               {/* Right Panel - Messages (only show in chat mode) */}
-              {activeTab === 'chat' && (
+              {activeTab === "chat" && (
                 <div className="lg:col-span-2">
                   <LiveMessages {...liveMessagesProps} />
                 </div>
               )}
 
               {/* Full width call interface when in call mode */}
-              {activeTab === 'call' && (
+              {activeTab === "call" && (
                 <div className="lg:col-span-2">
                   <div className="bg-gray-50 rounded-lg p-6 text-center">
-                    <h3 className="text-lg font-semibold mb-4">📞 Call Interface</h3>
-                    
-                    {callState === 'None' && (
-                      <p className="text-gray-600">Use the call panel on the left to start a call</p>
+                    <h3 className="text-lg font-semibold mb-4">
+                      📞 Call Interface
+                    </h3>
+
+                    {callState === "None" && (
+                      <p className="text-gray-600">
+                        Use the call panel on the left to start a call
+                      </p>
                     )}
-                    
-                    {callState === 'Connecting' && (
+
+                    {callState === "Connecting" && (
                       <div className="space-y-2">
-                        <div className="animate-pulse text-blue-600 text-xl">📞</div>
+                        <div className="animate-pulse text-blue-600 text-xl">
+                          📞
+                        </div>
                         <p>Connecting call...</p>
                       </div>
                     )}
-                    
-                    {callState === 'Ringing' && (
+
+                    {callState === "Ringing" && (
                       <div className="space-y-2">
-                        <div className="animate-bounce text-green-600 text-xl">📞</div>
+                        <div className="animate-bounce text-green-600 text-xl">
+                          📞
+                        </div>
                         <p>Incoming call ringing...</p>
                       </div>
                     )}
-                    
-                    {callState === 'Connected' && (
+
+                    {callState === "Connected" && (
                       <div className="space-y-4">
                         <div className="text-green-600 text-xl">✅</div>
-                        <p className="text-green-700 font-semibold">Call Connected!</p>
+                        <p className="text-green-700 font-semibold">
+                          Call Connected!
+                        </p>
                         <div className="text-sm text-gray-600">
                           Use the controls in the left panel to manage your call
                         </div>
                       </div>
                     )}
-                    
-                    {callState === 'Disconnected' && (
+
+                    {callState === "Disconnected" && (
                       <div className="space-y-2">
                         <div className="text-red-600 text-xl">📞</div>
                         <p className="text-red-700">Call ended</p>
