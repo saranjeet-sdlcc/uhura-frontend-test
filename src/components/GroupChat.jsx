@@ -1811,6 +1811,13 @@ const [error, setError] = useState(null);
         .configureLogging(signalR.LogLevel.Information)
         .build();
 
+
+        if (connection && connection.state === signalR.HubConnectionState.Connected) {
+      console.log("Already connected to SignalR hub, skipping new connection");
+      return connection;
+    }
+
+    
       // New message
       conn.on("newMessage", async (msg) => {
         if (!msg?.isGroup || !msg?.groupId) return;
@@ -2493,12 +2500,40 @@ const [error, setError] = useState(null);
   };
 
   /* ------------------ Mount ------------------ */
-  useEffect(() => {
-    if (!jwt) return;
-    connect();
-    fetchGroups();
-    if (Notification.permission !== "granted") Notification.requestPermission();
-  }, [jwt, connect, fetchGroups]);
+  // useEffect(() => {
+  //   if (!jwt) return;
+  //   connect();
+  //   fetchGroups();
+  //   if (Notification.permission !== "granted") Notification.requestPermission();
+  // }, [jwt, connect, fetchGroups]);
+
+
+/* ------------------ Mount ------------------ */
+useEffect(() => {
+  if (!jwt) return;
+  let conn;
+
+  const init = async () => {
+    // Establish connection once
+    conn = await connect();
+  };
+
+  init();
+  fetchGroups();
+
+  // Ask for notifications
+  if (Notification.permission !== "granted") Notification.requestPermission();
+
+  // Cleanup when component unmounts or jwt changes
+  return () => {
+    if (conn) {
+      conn.stop();
+      console.log("🔴 SignalR connection stopped on unmount");
+    }
+  };
+  // ✅ Empty dependency array ensures this runs only once
+}, []);
+
 
   /* ------------------ UI ------------------ */
   return (
