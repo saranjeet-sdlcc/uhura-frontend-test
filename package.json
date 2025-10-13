@@ -20,6 +20,11 @@
     "react-dom": "^19.1.1",
     "react-linkify": "^1.0.0-alpha",
     "react-router-dom": "^7.9.3",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "socket.io-client": "^4.8.1",
     "tailwindcss": "^4.1.12"
   },
   "devDependencies": {

@@ -1492,6 +1492,9 @@ export default function App() {
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
 
+  const [userPresence, setUserPresence] = useState({});
+  const [typingUsers, setTypingUsers] = useState({}); // { conversationId: { userId: timestamp } }
+
   // Call state
   const [callState, setCallState] = useState("None");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "group" | "call" | "notification"
@@ -1532,6 +1535,90 @@ export default function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Presence management
+  // Presence management
+  useEffect(() => {
+    if (!connected || !jwt) return;
+
+    // Set online when connected
+    fetch("http://localhost:4002/presence/online", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}` },
+    }).catch((err) => console.warn("Set online failed:", err));
+
+    // Heartbeat every 15 seconds (half of TTL)
+    const heartbeatInterval = setInterval(() => {
+      fetch("http://localhost:4002/presence/heartbeat", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}` },
+      }).catch((err) => console.warn("Heartbeat failed:", err));
+    }, 15000); // Changed to 15 seconds
+
+    // Handle tab close, browser close, or navigation away
+    const handleBeforeUnload = () => {
+      // Use sendBeacon for reliable offline notification
+      const blob = new Blob([JSON.stringify({})], { type: "application/json" });
+      navigator.sendBeacon("http://localhost:4002/presence/offline", blob);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // User switched tabs or minimized
+        fetch("http://localhost:4002/presence/offline", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jwt}` },
+          keepalive: true, // Ensure request completes even if page is closing
+        }).catch((err) => console.warn("Set offline failed:", err));
+      } else {
+        // User came back to tab
+        fetch("http://localhost:4002/presence/online", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jwt}` },
+        }).catch((err) => console.warn("Set online failed:", err));
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Set offline on unmount/disconnect
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      // Final offline call
+      navigator.sendBeacon(
+        "http://localhost:4002/presence/offline",
+        new Blob([JSON.stringify({})], { type: "application/json" })
+      );
+    };
+  }, [connected, jwt]);
+
+  // Clean up typing indicators
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      setTypingUsers((prev) => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach((convId) => {
+          Object.keys(updated[convId]).forEach((uid) => {
+            if (now - updated[convId][uid] > 10000) {
+              delete updated[convId][uid];
+            }
+          });
+          if (Object.keys(updated[convId]).length === 0) {
+            delete updated[convId];
+          }
+        });
+        return updated;
+      });
+    }, 2000);
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   const postReceipt = async (endpoint, body) => {
     try {
@@ -1597,19 +1684,20 @@ export default function App() {
       // Single entry point for server "newMessage"
       chatConnection.on("newMessage", (msg) => {
         console.log("📥 Received newMessage:", msg);
+        const incomingMsg = {
+          ...msg,
+          incoming: true,
+          status: msg.status || "sent",
+          isReply: msg.isReply || false,
+          replyTo: msg.replyTo || null,
+        };
+        setMessages((prev) => [...prev, incomingMsg]);
 
-        // 🚫 Never allow group messages into 1:1 state
-        if (msg?.isGroup && msg?.groupId) {
-          setGroupMessagesByGroup((prev) => ({
-            ...prev,
-            [msg.groupId]: [...(prev[msg.groupId] || []), msg],
-          }));
-          return; // stop here to avoid touching 1:1
-        }
-
-        // ✅ 1:1 messages only
-        if (!msg?.isGroup) {
-          setMessages((prev) => [...prev, msg]);
+        if (
+          selectedConversation === incomingMsg.senderId ||
+          selectedConversation === incomingMsg.recipientId
+        ) {
+          setConversationMessages((prev) => [...prev, incomingMsg]);
         }
       });
 
@@ -1627,17 +1715,15 @@ export default function App() {
         });
       });
 
-      chatConnection.on("messageDeleted", ({ groupId, messageId }) => {
-        setGroupMessagesByGroup((prev) => {
-          const list = prev[groupId] || [];
-          return {
-            ...prev,
-            [groupId]: list.map((m) =>
-              m.messageId === messageId
-                ? { ...m, content: "🗑️ Message deleted", deleted: true }
-                : m
-            ),
-          };
+      // Handle updates (edits)
+      newConnection.on("messageUpdated", (payload) => {
+        console.log("🔧 Received messageUpdated:", payload);
+        if (!payload || !payload.messageId) return;
+        updateMessageById(payload.messageId, {
+          content: payload.content,
+          isEdited: payload.isEdited || true,
+          editedAt: payload.editedAt || new Date().toISOString(),
+          updatedAt: payload.updatedAt || new Date().toISOString(),
         });
       });
 
@@ -1665,47 +1751,63 @@ export default function App() {
         });
       });
 
-      await chatConnection.start();
-      setConnection(chatConnection);
-      console.log("✅ Connected to chat hub!");
+      // Inside connectToSignalR function, after existing handlers:
 
-      // --- Notification hub ---
-      const notifRes = await fetch("http://localhost:4004/negotiate", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-          "Content-Type": "application/json",
-        },
+      // Handle presence updates
+      // Handle presence updates
+      newConnection.on("presenceUpdate", (data) => {
+        console.log("👁 Presence update received:", data);
+        console.log(
+          "User:",
+          data.userId,
+          "Online:",
+          data.online,
+          "Last seen:",
+          data.lastSeenAt
+        );
+
+        setUserPresence((prev) => {
+          const updated = {
+            ...prev,
+            [data.userId]: {
+              online: data.online,
+              lastSeenAt: data.lastSeenAt,
+            },
+          };
+          console.log("Updated userPresence state:", updated);
+          return updated;
+        });
       });
-      if (!notifRes.ok)
-        throw new Error(`Notification negotiate failed: ${notifRes.status}`);
-      const { url: notifUrl, accessToken: notifAccessToken } = await notifRes.json();
 
-      const notifConnection = new signalR.HubConnectionBuilder()
-        .withUrl(notifUrl, {
-          accessTokenFactory: () => notifAccessToken,
-          skipNegotiation: true,
-          transport: signalR.HttpTransportType.WebSockets,
-        })
-        .withAutomaticReconnect([0, 2000, 5000, 10000])
-        .configureLogging(signalR.LogLevel.Information)
-        .build();
+      // Handle typing status
+      newConnection.on("typingStatus", (data) => {
+        console.log("⌨ Typing status:", data);
+        const { fromUserId, conversationId, isTyping } = data;
 
-      notifConnection.on("newNotification", (notification) => {
-        console.log("🔔 Received notification:", notification);
-        setReceivedNotifications((prev) => [notification, ...prev]);
-        if (Notification.permission === "granted") {
-          new Notification(notification.title, {
-            body: notification.body,
-            icon: "/favicon.ico",
+        if (isTyping) {
+          setTypingUsers((prev) => ({
+            ...prev,
+            [conversationId]: {
+              ...prev[conversationId],
+              [fromUserId]: Date.now(),
+            },
+          }));
+        } else {
+          setTypingUsers((prev) => {
+            const updated = { ...prev };
+            if (updated[conversationId]) {
+              delete updated[conversationId][fromUserId];
+              if (Object.keys(updated[conversationId]).length === 0) {
+                delete updated[conversationId];
+              }
+            }
+            return updated;
           });
         }
       });
 
-      await notifConnection.start();
-      setNotificationConnection(notifConnection);
-      console.log("✅ Connected to notification hub!");
-
+      await newConnection.start();
+      setConnection(newConnection);
       setConnected(true);
       alert("✅ Connected to both chat and notification hubs!");
     } catch (err) {
@@ -1779,6 +1881,9 @@ export default function App() {
   // Calls
   const handleCallStateChange = (newState) => {
     setCallState(newState);
+    console.log("📞 Call state changed to:", newState);
+
+    // Auto-switch to call tab when call starts
     if (newState === "Connecting" || newState === "Ringing") {
       setActiveTab("call");
     }
@@ -1808,6 +1913,7 @@ export default function App() {
     selectedConversation,
     replyingTo,
     setReplyingTo,
+    conversations, // ADD THIS
   };
 
   const conversationListProps = {
@@ -1817,8 +1923,11 @@ export default function App() {
     fetchConversations,
     fetchConversationMessages,
     userId,
+    userPresence,
+    setUserPresence,
+    typingUsers,
+    jwt,
   };
-
   const liveMessagesProps = {
     // ⛔ remains purely 1:1
     messages,

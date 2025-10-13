@@ -1,450 +1,606 @@
-// components/CallPanel.jsx
-import { useState, useEffect, useRef } from 'react';
-import { CallClient } from '@azure/communication-calling';
-import { AzureCommunicationTokenCredential } from '@azure/communication-common';
-import CallHistory from './CallHistory'; // ADD: Import CallHistory
+// ----------------------WITHOUT TRANSLATION BELOW:---------------------------------------
+import { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import * as signalR from "@microsoft/signalr";
+import { CallClient } from "@azure/communication-calling";
+import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 
-export default function CallPanel({ jwt, userId, onCallStateChange }) {
-  const [callAgent, setCallAgent] = useState(null);
-  const [call, setCall] = useState(null);
-  const [callState, setCallState] = useState('None'); // None, Connecting, Connected, Ringing, Disconnected
-  const [acsToken, setAcsToken] = useState(null);
-  const [acsUserId, setAcsUserId] = useState(null);
-  const [targetUserId, setTargetUserId] = useState('');
-  const [targetAcsUserId, setTargetAcsUserId] = useState('');
+const CallPanel = ({ jwt, userId, onCallStateChange }) => {
+  // State management
+  const [isCallActive, setIsCallActive] = useState(false);
   const [isIncomingCall, setIsIncomingCall] = useState(false);
-  const [incomingCall, setIncomingCall] = useState(null);
-  const [isVideo, setIsVideo] = useState(false);
+  const [callStatus, setCallStatus] = useState("idle"); // idle, initiating, ringing, connected, ended
+  const [currentCall, setCurrentCall] = useState(null);
+  const [callDuration, setCallDuration] = useState(0);
+  const [receiverInput, setReceiverInput] = useState("");
+  const [incomingCallData, setIncomingCallData] = useState(null);
+  const [callHistory, setCallHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
+  // Refs
+  const socketRef = useRef(null);
+  const callClientRef = useRef(null);
+  const callAgentRef = useRef(null);
+  const currentCallRef = useRef(null);
+  const durationIntervalRef = useRef(null);
+  const callIdRef = useRef(null);
+  const acsGroupCallIdRef = useRef(null);
 
-  // Initialize ACS and get token
+  const API_BASE_URL = "http://localhost:4005/api/calls";
+  const SOCKET_URL = "http://localhost:4005";
+
+  // Initialize socket connection
+  // useEffect(() => {
+  //   socketRef.current = io(SOCKET_URL, {
+  //     transports: ['websocket'],
+  //     reconnection: true,
+  //   });
+
+  //   socketRef.current.on('connect', () => {
+  //     console.log('✅ Socket connected');
+  //     socketRef.current.emit('user_connected', userId);
+  //   });
+
+  //   // Listen for incoming call
+  //   socketRef.current.on('incoming_call', async (data) => {
+  //     console.log('📞 Incoming call:', data);
+  //     setIncomingCallData(data);
+  //     setIsIncomingCall(true);
+  //     setCallStatus('ringing');
+  //     playRingtone();
+  //   });
+
+  //   // Listen for call accepted
+  //   socketRef.current.on('call_accepted', (data) => {
+  //     console.log('✅ Call accepted:', data);
+  //     setCallStatus('connected');
+  //     stopRingtone();
+  //     startCallDuration();
+  //   });
+
+  //   // Listen for call rejected
+  //   socketRef.current.on('call_rejected', (data) => {
+  //     console.log('❌ Call rejected:', data);
+  //     handleCallEnd();
+  //   });
+
+  //   // Listen for call cancelled
+  //   socketRef.current.on('call_cancelled', (data) => {
+  //     console.log('🚫 Call cancelled:', data);
+  //     handleCallEnd();
+  //   });
+
+  //   // Listen for call ended
+  //   socketRef.current.on('call_ended', (data) => {
+  //     console.log('📴 Call ended:', data);
+  //     handleCallEnd();
+  //   });
+
+  //   // Listen for call missed
+  //   socketRef.current.on('call_missed', (data) => {
+  //     console.log('📵 Call missed:', data);
+  //     handleCallEnd();
+  //   });
+
+  //   return () => {
+  //     if (socketRef.current) {
+  //       socketRef.current.disconnect();
+  //     }
+  //     if (durationIntervalRef.current) {
+  //       clearInterval(durationIntervalRef.current);
+  //     }
+  //   };
+  // }, [userId]);
+
+  // Replace the Socket.IO connection with SignalR
   useEffect(() => {
-    if (jwt && userId) {
-      initializeACS();
-    }
-  }, [jwt, userId]);
+    const connectSignalR = async () => {
+      try {
+        // Get SignalR token from backend
+        const tokenResponse = await axios.post(
+          `${API_BASE_URL}/signalr/negotiate`,
+          {
+            userId: userId,
+          }
+        );
 
-  const initializeACS = async () => {
+        const { url, accessToken } = tokenResponse.data;
+
+        // Create SignalR connection
+        const connection = new signalR.HubConnectionBuilder()
+          .withUrl(`${url}/client/?hub=call`, {
+            accessTokenFactory: () => accessToken,
+          })
+          .withAutomaticReconnect()
+          .configureLogging(signalR.LogLevel.Information)
+          .build();
+
+        // Register event handlers
+        connection.on("incoming_call", async (data) => {
+          console.log("📞 Incoming call:", data);
+          setIncomingCallData(data);
+          setIsIncomingCall(true);
+          setCallStatus("ringing");
+          playRingtone();
+        });
+
+        connection.on("call_accepted", (data) => {
+          console.log("✅ Call accepted:", data);
+          setCallStatus("connected");
+          stopRingtone();
+          startCallDuration();
+        });
+
+        connection.on("call_rejected", (data) => {
+          console.log("❌ Call rejected:", data);
+          handleCallEnd();
+        });
+
+        connection.on("call_cancelled", (data) => {
+          console.log("🚫 Call cancelled:", data);
+          handleCallEnd();
+        });
+
+        connection.on("call_ended", (data) => {
+          console.log("📴 Call ended:", data);
+          handleCallEnd();
+        });
+
+        connection.on("call_missed", (data) => {
+          console.log("📵 Call missed:", data);
+          handleCallEnd();
+        });
+
+        // Start connection
+        await connection.start();
+        console.log("✅ SignalR Connected");
+        socketRef.current = connection;
+      } catch (error) {
+        console.error("❌ SignalR Connection Error:", error);
+      }
+    };
+
+    connectSignalR();
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.stop();
+      }
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
+    };
+  }, [userId]);
+
+  // Initialize Azure Communication Services Call Client
+  const initializeCallClient = async (acsToken) => {
     try {
-      setLoading(true);
-      setError('');
-
-      console.log('🚀 Initializing ACS...');
-      
-      // Get ACS token from our backend
-      const tokenResponse = await fetch('http://localhost:4005/acs/token', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const tokenData = await tokenResponse.json();
-      
-      if (!tokenData.success) {
-        throw new Error(tokenData.error || 'Failed to get ACS token');
+      if (!callClientRef.current) {
+        callClientRef.current = new CallClient();
       }
 
-      console.log('✅ ACS Token received:', tokenData.data);
-      setAcsToken(tokenData.data.token);
-      setAcsUserId(tokenData.data.acsUserId);
+      const tokenCredential = new AzureCommunicationTokenCredential(acsToken);
+      callAgentRef.current =
+        await callClientRef.current.createCallAgent(tokenCredential);
 
-      // Initialize Call Client
-      const callClient = new CallClient();
-      const tokenCredential = new AzureCommunicationTokenCredential(tokenData.data.token);
-      const agent = await callClient.createCallAgent(tokenCredential);
-
-      console.log('✅ Call Agent created');
-      setCallAgent(agent);
-
-      // Listen for incoming calls
-      agent.on('incomingCall', async (args) => {
-        console.log('📞 Incoming call received:', args);
-        setIncomingCall(args.incomingCall);
-        setIsIncomingCall(true);
-        setCallState('Ringing');
-      });
-
-    } catch (err) {
-      console.error('❌ ACS initialization error:', err);
-      setError(`Failed to initialize calling: ${err.message}`);
-    } finally {
-      setLoading(false);
+      console.log("✅ Call agent created");
+      return callAgentRef.current;
+    } catch (error) {
+      console.error("❌ Error initializing call client:", error);
+      throw error;
     }
   };
 
-  // Get target user's ACS ID
-  const getTargetAcsUserId = async (targetUserId) => {
-    try {
-      const response = await fetch(`http://localhost:4005/acs/user/${targetUserId}`, {
-        headers: {
-          'Authorization': `Bearer ${jwt}`
-        }
-      });
+  // Start call duration timer
+  const startCallDuration = () => {
+    durationIntervalRef.current = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+  };
 
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'User not found');
-      }
-
-      return data.data.acsUserId;
-    } catch (err) {
-      console.error('❌ Error getting target ACS user:', err);
-      throw err;
+  // Stop call duration timer
+  const stopCallDuration = () => {
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = null;
     }
   };
 
-  // Start outgoing call
-  const startCall = async () => {
+  // Format call duration
+  const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // Play ringtone (simple implementation)
+  const playRingtone = () => {
+    // You can add actual audio element here
+    console.log("🔔 Playing ringtone...");
+  };
+
+  // Stop ringtone
+  const stopRingtone = () => {
+    console.log("🔕 Stopping ringtone...");
+  };
+
+  // Initiate outgoing call
+  const initiateCall = async () => {
+    if (!receiverInput.trim()) {
+      alert("Please enter receiver ID");
+      return;
+    }
+
     try {
-      if (!callAgent || !targetUserId) {
-        setError('Please enter target user ID');
-        return;
-      }
-
-      setLoading(true);
-      setError('');
-      console.log('📞 Starting call to:', targetUserId);
-
-      // Get target user's ACS ID
-      const targetAcs = await getTargetAcsUserId(targetUserId);
-      setTargetAcsUserId(targetAcs);
-
-      console.log('🎯 Target ACS User ID:', targetAcs);
-
-      // Start the call
-      const callOptions = {
-        videoOptions: isVideo ? {
-          localVideoStreams: []
-        } : undefined,
-        audioOptions: {
-          muted: false
-        }
-      };
-
-      const newCall = callAgent.startCall([{ communicationUserId: targetAcs }], callOptions);
-      setCall(newCall);
-      setCallState('Connecting');
-
-      // Listen to call state changes
-      newCall.on('stateChanged', () => {
-        console.log('📞 Call state changed:', newCall.state);
-        setCallState(newCall.state);
-        onCallStateChange?.(newCall.state);
-
-        if (newCall.state === 'Connected') {
-          handleCallConnected(newCall);
-        } else if (newCall.state === 'Disconnected') {
-          handleCallEnded();
-        }
+      setCallStatus("initiating");
+      const response = await axios.post(`${API_BASE_URL}/initiate`, {
+        callerId: userId,
+        receiverId: receiverInput.trim(),
+        callType: "audio",
       });
 
-    } catch (err) {
-      console.error('❌ Start call error:', err);
-      setError(`Failed to start call: ${err.message}`);
-      setLoading(false);
+      if (response.data.success) {
+        const { callId, acsGroupCallId, acsToken, receiver } = response.data;
+        callIdRef.current = callId;
+        acsGroupCallIdRef.current = acsGroupCallId;
+
+        console.log("📞 Call initiated:", response.data);
+        setCallStatus("ringing");
+        setIsCallActive(true);
+        onCallStateChange?.(true);
+
+        // Initialize ACS and join call
+        const callAgent = await initializeCallClient(acsToken);
+        const call = callAgent.join({ groupId: acsGroupCallId });
+        currentCallRef.current = call;
+
+        // Listen for call state changes
+        call.on("stateChanged", () => {
+          console.log("Call state:", call.state);
+          if (call.state === "Connected") {
+            setCallStatus("connected");
+            startCallDuration();
+          }
+        });
+
+        playRingtone();
+      }
+    } catch (error) {
+      console.error("❌ Error initiating call:", error);
+      alert(
+        "Failed to initiate call: " +
+          (error.response?.data?.message || error.message)
+      );
+      handleCallEnd();
     }
   };
 
-  // Answer incoming call
-  const answerCall = async () => {
+  // Accept incoming call
+  const acceptCall = async () => {
+    if (!incomingCallData) return;
+
     try {
-      if (!incomingCall) return;
-
-      console.log('✅ Answering call...');
-      
-      const callOptions = {
-        videoOptions: isVideo ? {
-          localVideoStreams: []
-        } : undefined
-      };
-
-      const answeredCall = await incomingCall.accept(callOptions);
-      setCall(answeredCall);
-      setIsIncomingCall(false);
-      setIncomingCall(null);
-      setCallState('Connected');
-
-      // Listen to call state changes
-      answeredCall.on('stateChanged', () => {
-        console.log('📞 Call state changed:', answeredCall.state);
-        setCallState(answeredCall.state);
-        onCallStateChange?.(answeredCall.state);
-
-        if (answeredCall.state === 'Connected') {
-          handleCallConnected(answeredCall);
-        } else if (answeredCall.state === 'Disconnected') {
-          handleCallEnded();
-        }
+      const response = await axios.post(`${API_BASE_URL}/accept`, {
+        callId: incomingCallData.callId,
+        receiverId: userId,
       });
 
-    } catch (err) {
-      console.error('❌ Answer call error:', err);
-      setError(`Failed to answer call: ${err.message}`);
+      if (response.data.success) {
+        const { acsToken, acsGroupCallId } = response.data;
+        callIdRef.current = incomingCallData.callId;
+        acsGroupCallIdRef.current = acsGroupCallId;
+
+        setIsIncomingCall(false);
+        setIsCallActive(true);
+        setCallStatus("connected");
+        stopRingtone();
+        onCallStateChange?.(true);
+
+        // Initialize ACS and join call
+        const callAgent = await initializeCallClient(acsToken);
+        const call = callAgent.join({ groupId: acsGroupCallId });
+        currentCallRef.current = call;
+
+        // Listen for call state changes
+        call.on("stateChanged", () => {
+          console.log("Call state:", call.state);
+          if (call.state === "Connected") {
+            startCallDuration();
+          }
+        });
+
+        console.log("✅ Call accepted");
+      }
+    } catch (error) {
+      console.error("❌ Error accepting call:", error);
+      alert(
+        "Failed to accept call: " +
+          (error.response?.data?.message || error.message)
+      );
+      handleCallEnd();
     }
   };
 
   // Reject incoming call
   const rejectCall = async () => {
+    if (!incomingCallData) return;
+
     try {
-      if (incomingCall) {
-        await incomingCall.reject();
-        setIncomingCall(null);
-        setIsIncomingCall(false);
-        setCallState('None');
-        console.log('❌ Call rejected');
-      }
-    } catch (err) {
-      console.error('❌ Reject call error:', err);
+      await axios.post(`${API_BASE_URL}/reject`, {
+        callId: incomingCallData.callId,
+        receiverId: userId,
+      });
+      console.log("❌ Call rejected");
+      handleCallEnd();
+    } catch (error) {
+      console.error("❌ Error rejecting call:", error);
+      handleCallEnd();
+    }
+  };
+
+  // Cancel outgoing call
+  const cancelCall = async () => {
+    if (!callIdRef.current) return;
+
+    try {
+      await axios.post(`${API_BASE_URL}/cancel`, {
+        callId: callIdRef.current,
+        callerId: userId,
+      });
+      console.log("🚫 Call cancelled");
+      handleCallEnd();
+    } catch (error) {
+      console.error("❌ Error cancelling call:", error);
+      handleCallEnd();
     }
   };
 
   // End active call
   const endCall = async () => {
+    if (!callIdRef.current) return;
+
     try {
-      if (call) {
-        await call.hangUp();
-        console.log('📞 Call ended');
-      }
-    } catch (err) {
-      console.error('❌ End call error:', err);
-    }
-  };
-
-  // Handle call connected
-  const handleCallConnected = (connectedCall) => {
-    console.log('✅ Call connected successfully');
-    setLoading(false);
-    
-    // Handle remote video streams
-    connectedCall.on('remoteParticipantsUpdated', (e) => {
-      e.added.forEach((participant) => {
-        participant.on('videoStreamsUpdated', (e) => {
-          e.added.forEach((stream) => {
-            if (stream.mediaStreamType === 'Video') {
-              console.log('📹 Remote video stream added');
-              // Handle remote video stream
-              const renderer = new VideoStreamRenderer(stream);
-              const view = renderer.createView();
-              if (remoteVideoRef.current) {
-                remoteVideoRef.current.appendChild(view.target);
-              }
-            }
-          });
-        });
+      await axios.post(`${API_BASE_URL}/end`, {
+        callId: callIdRef.current,
+        userId: userId,
       });
-    });
+      console.log("📴 Call ended");
+      handleCallEnd();
+    } catch (error) {
+      console.error("❌ Error ending call:", error);
+      handleCallEnd();
+    }
   };
 
-  // Handle call ended
-  const handleCallEnded = () => {
-    console.log('📞 Call ended');
-    setCall(null);
-    setCallState('None');
+  // Handle call end cleanup
+  const handleCallEnd = () => {
+    stopRingtone();
+    stopCallDuration();
+
+    // Hang up ACS call
+    if (currentCallRef.current) {
+      currentCallRef.current.hangUp().catch(console.error);
+      currentCallRef.current = null;
+    }
+
+    setIsCallActive(false);
     setIsIncomingCall(false);
-    setIncomingCall(null);
-    setLoading(false);
-    
-    // Clear video elements
-    if (localVideoRef.current) {
-      localVideoRef.current.innerHTML = '';
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.innerHTML = '';
-    }
+    setCallStatus("idle");
+    setCallDuration(0);
+    setIncomingCallData(null);
+    callIdRef.current = null;
+    acsGroupCallIdRef.current = null;
+    onCallStateChange?.(false);
   };
 
   // Toggle mute
   const toggleMute = async () => {
-    try {
-      if (call) {
+    if (currentCallRef.current) {
+      try {
         if (isMuted) {
-          await call.unmute();
+          await currentCallRef.current.unmute();
         } else {
-          await call.mute();
+          await currentCallRef.current.mute();
         }
         setIsMuted(!isMuted);
+      } catch (error) {
+        console.error("Error toggling mute:", error);
       }
-    } catch (err) {
-      console.error('❌ Toggle mute error:', err);
     }
   };
 
-  // Toggle video
-  const toggleVideo = async () => {
+  // Fetch call history
+  const fetchCallHistory = async () => {
     try {
-      if (call) {
-        if (isVideoOn) {
-          await call.stopVideo();
-        } else {
-          // Start video logic would go here
-          console.log('📹 Starting video...');
-        }
-        setIsVideoOn(!isVideoOn);
+      const response = await axios.get(`${API_BASE_URL}/history/${userId}`);
+      if (response.data.success) {
+        setCallHistory(response.data.calls);
+        setShowHistory(true);
       }
-    } catch (err) {
-      console.error('❌ Toggle video error:', err);
+    } catch (error) {
+      console.error("❌ Error fetching call history:", error);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="p-4 bg-gray-50 rounded">
-        <h3 className="text-lg font-semibold">📞 Voice & Video Calling</h3>
-        
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mt-4">
-            {error}
-          </div>
-        )}
+    <div className="w-full max-w-md mx-auto p-4 bg-white rounded-lg shadow-lg">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-bold text-gray-800">📞 Audio Call</h2>
+        <button
+          onClick={fetchCallHistory}
+          className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded"
+        >
+          History
+        </button>
+      </div>
 
-        {/* ACS Status */}
-        <div className="flex items-center space-x-2 mt-4">
-          <div className={`w-3 h-3 rounded-full ${callAgent ? 'bg-green-500' : 'bg-red-500'}`}></div>
-          <span className="text-sm">
-            {callAgent ? `Ready to call (${acsUserId?.slice(-8)}...)` : 'Initializing...'}
-          </span>
-        </div>
-
-        {/* Call State */}
-        <div className="text-sm text-gray-600 mt-2">
-          Status: <span className="font-semibold">{callState}</span>
-        </div>
-
-        {/* Incoming Call UI */}
-        {isIncomingCall && (
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded mt-4">
-            <h4 className="font-semibold text-blue-800 mb-2">📞 Incoming Call</h4>
-            <div className="flex space-x-2">
+      {/* Incoming Call UI */}
+      {isIncomingCall && (
+        <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
+          <div className="text-center">
+            <div className="text-4xl mb-2">📞</div>
+            <h3 className="text-lg font-semibold mb-1">Incoming Call</h3>
+            <p className="text-gray-700 mb-1">{incomingCallData?.callerName}</p>
+            <p className="text-sm text-gray-500 mb-4">Audio Call</p>
+            <div className="flex gap-2 justify-center">
               <button
-                onClick={answerCall}
-                className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                onClick={acceptCall}
+                className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-full font-semibold"
               >
-                ✅ Answer
+                ✓ Accept
               </button>
               <button
                 onClick={rejectCall}
-                className="flex-1 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-full font-semibold"
               >
-                ❌ Reject
+                ✕ Reject
               </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Outgoing Call UI */}
-        {callState === 'None' && !isIncomingCall && (
-          <div className="space-y-3 mt-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">🎯 Call User ID</label>
-              <input
-                type="text"
-                placeholder="Enter user ID to call"
-                className="w-full border rounded px-3 py-2"
-                value={targetUserId}
-                onChange={(e) => setTargetUserId(e.target.value)}
-                disabled={loading}
-              />
+      {/* Active Call UI */}
+      {isCallActive && !isIncomingCall && (
+        <div className="mb-4 p-4 bg-green-50 border-2 border-green-300 rounded-lg">
+          <div className="text-center">
+            <div className="text-4xl mb-2">
+              {callStatus === "ringing" ? "📞" : "🎙️"}
             </div>
-
-            <div className="flex items-center space-x-4">
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  checked={isVideo}
-                  onChange={(e) => setIsVideo(e.target.checked)}
-                  disabled={loading}
-                />
-                <span className="text-sm">📹 Video Call</span>
-              </label>
-            </div>
-
-            <button
-              onClick={startCall}
-              disabled={!callAgent || loading || !targetUserId}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
-            >
-              {loading ? 'Calling...' : '📞 Start Call'}
-            </button>
-          </div>
-        )}
-
-        {/* Active Call Controls */}
-        {call && callState === 'Connected' && (
-          <div className="bg-green-50 border border-green-200 p-4 rounded mt-4">
-            <h4 className="font-semibold text-green-800 mb-3">📞 Call Active</h4>
-            
-            <div className="flex space-x-2 mb-4">
-              <button
-                onClick={toggleMute}
-                className={`flex-1 px-4 py-2 rounded ${
-                  isMuted 
-                    ? 'bg-red-600 hover:bg-red-700 text-white' 
-                    : 'bg-gray-600 hover:bg-gray-700 text-white'
-                }`}
-              >
-                {isMuted ? '🔇 Muted' : '🎤 Mute'}
-              </button>
-              
-              {isVideo && (
+            <h3 className="text-lg font-semibold mb-1">
+              {callStatus === "ringing" ? "Calling..." : "Call in Progress"}
+            </h3>
+            {callStatus === "connected" && (
+              <p className="text-2xl font-mono mb-4">
+                {formatDuration(callDuration)}
+              </p>
+            )}
+            <div className="flex gap-2 justify-center mb-2">
+              {callStatus === "connected" && (
                 <button
-                  onClick={toggleVideo}
-                  className={`flex-1 px-4 py-2 rounded ${
-                    isVideoOn 
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                      : 'bg-gray-600 hover:bg-gray-700 text-white'
+                  onClick={toggleMute}
+                  className={`px-4 py-2 rounded-full font-semibold ${
+                    isMuted
+                      ? "bg-red-500 text-white"
+                      : "bg-gray-200 text-gray-800"
                   }`}
                 >
-                  {isVideoOn ? '📹 Video On' : '📷 Video Off'}
+                  {isMuted ? "🔇 Unmute" : "🔊 Mute"}
                 </button>
               )}
             </div>
-
             <button
-              onClick={endCall}
-              className="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+              onClick={callStatus === "ringing" ? cancelCall : endCall}
+              className="px-8 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-semibold text-lg"
             >
-              📞 End Call
+              📴 {callStatus === "ringing" ? "Cancel" : "End Call"}
             </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Video Elements */}
-        {isVideo && (
-          <div className="space-y-2 mt-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">📹 Local Video</label>
-              <div ref={localVideoRef} className="w-full h-32 bg-gray-200 rounded"></div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">📹 Remote Video</label>
-              <div ref={remoteVideoRef} className="w-full h-32 bg-gray-200 rounded"></div>
-            </div>
+      {/* Make Call UI */}
+      {!isCallActive && !isIncomingCall && !showHistory && (
+        <div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Enter User ID to Call
+            </label>
+            <input
+              type="text"
+              value={receiverInput}
+              onChange={(e) => setReceiverInput(e.target.value)}
+              placeholder="Enter receiver user ID"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-        )}
+          <button
+            onClick={initiateCall}
+            disabled={!receiverInput.trim()}
+            className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-lg font-semibold text-lg"
+          >
+            📞 Start Audio Call
+          </button>
+        </div>
+      )}
 
-        {/* Debug Info */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded mt-4">
-            <div>User ID: {userId}</div>
-            <div>ACS User ID: {acsUserId}</div>
-            <div>Target User ID: {targetUserId}</div>
-            <div>Target ACS ID: {targetAcsUserId}</div>
-            <div>Call State: {callState}</div>
+      {/* Call History UI */}
+      {showHistory && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Call History</h3>
+            <button
+              onClick={() => setShowHistory(false)}
+              className="text-blue-500 hover:text-blue-700"
+            >
+              ✕ Close
+            </button>
           </div>
-        )}
+          <div className="max-h-96 overflow-y-auto">
+            {callHistory.length === 0 ? (
+              <p className="text-center text-gray-500 py-4">No call history</p>
+            ) : (
+              callHistory.map((call) => (
+                <div
+                  key={call.callId}
+                  className="mb-2 p-3 bg-gray-50 border border-gray-200 rounded-lg"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">
+                        {call.otherUser?.name || "Unknown User"}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {call.isOutgoing ? "↗️ Outgoing" : "↙️ Incoming"} •{" "}
+                        <span
+                          className={`font-semibold ${
+                            call.callStatus === "accepted"
+                              ? "text-green-600"
+                              : call.callStatus === "missed"
+                                ? "text-orange-600"
+                                : call.callStatus === "rejected"
+                                  ? "text-red-600"
+                                  : "text-gray-600"
+                          }`}
+                        >
+                          {call.callStatus}
+                        </span>
+                      </p>
+                      {call.duration > 0 && (
+                        <p className="text-sm text-gray-500">
+                          Duration: {formatDuration(call.duration)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">
+                        {new Date(call.initiatedAt).toLocaleDateString()}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(call.initiatedAt).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Status Indicator */}
+      <div className="mt-4 text-center text-sm text-gray-500">
+        Status: <span className="font-semibold">{callStatus}</span>
       </div>
-
-      {/* ADD: Call History Component */}
-      <CallHistory jwt={jwt} userId={userId} />
     </div>
   );
-}
+};
+
+export default CallPanel;
+
+//  -----------------------------WITH TRANSLATION BELOW:------------------------------------------
+ 
+
+
