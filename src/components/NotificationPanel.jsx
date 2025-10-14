@@ -230,7 +230,7 @@ export default function NotificationPanel({ jwt, userId, receivedNotifications, 
 
     setIsSending(true);
     try {
-      const response = await fetch("http://localhost:4004/test-notification", {
+      const response = await fetch("http://localhost:4003/test-notification", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
