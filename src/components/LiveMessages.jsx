@@ -1,8 +1,9 @@
+// LiveMessages.jsx
 import Message from "./Message";
 
 export default function LiveMessages({
-  messages,
-  conversationMessages,
+  messages = [],
+  conversationMessages = [],
   selectedConversation,
   loadingMessages,
   userId,
@@ -13,14 +14,29 @@ export default function LiveMessages({
   setEditingText,
   selectedMessageIds,
   setSelectedMessageIds,
-  updateMessageById,
+  updateMessageById: parentUpdateMessageById,
   setMessages,
   setConversationMessages,
   messagesEndRef,
-  // NEW: Reply functionality props
   replyingTo,
   setReplyingTo,
 }) {
+  // fallback updateMessageById: updates both lists if parent didn't provide
+  const updateMessageById = parentUpdateMessageById
+    ? parentUpdateMessageById
+    : (messageId, patch) => {
+        if (setMessages) {
+          setMessages((prev) =>
+            prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+          );
+        }
+        if (setConversationMessages) {
+          setConversationMessages((prev) =>
+            prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+          );
+        }
+      };
+
   const postReceipt = async (endpoint, body) => {
     try {
       const res = await fetch(`http://localhost:4002/chat/${endpoint}`, {
@@ -127,15 +143,14 @@ export default function LiveMessages({
       );
       const data = await res.json();
       if (res.ok && data.success) {
-        setMessages((prev) =>
-          prev.filter((m) => m.messageId !== msg.messageId)
-        );
-        setConversationMessages((prev) =>
-          prev.filter((m) => m.messageId !== msg.messageId)
-        );
-        setSelectedMessageIds((prev) =>
-          prev.filter((id) => id !== msg.messageId)
-        );
+        setMessages &&
+          setMessages((prev) => prev.filter((m) => m.messageId !== msg.messageId));
+        setConversationMessages &&
+          setConversationMessages((prev) =>
+            prev.filter((m) => m.messageId !== msg.messageId)
+          );
+        setSelectedMessageIds &&
+          setSelectedMessageIds((prev) => prev.filter((id) => id !== msg.messageId));
       } else {
         throw new Error(data.error || "Delete for me failed");
       }
@@ -179,7 +194,7 @@ export default function LiveMessages({
     }
   };
 
-  // NEW: Reply functionality
+  // Reply functionality
   const handleReply = (message) => {
     if (!message || message.isDeletedForEveryone) {
       alert("Cannot reply to deleted message");
@@ -227,8 +242,8 @@ export default function LiveMessages({
     deleteForMe,
     deleteForEveryone,
     toggleSelectMessage,
-    handleReply, // NEW
-    cancelReply, // NEW
+    handleReply,
+    cancelReply,
   };
 
   return (
@@ -257,6 +272,10 @@ export default function LiveMessages({
                     selectedMessageIds={selectedMessageIds}
                     formatTime={formatTime}
                     handlers={messageHandlers}
+                    updateMessageById={updateMessageById}
+                    jwt={jwt}
+                    isLive={false}
+                    setReplyingTo={setReplyingTo}
                   />
                 ))
               )}
@@ -280,7 +299,10 @@ export default function LiveMessages({
               selectedMessageIds={selectedMessageIds}
               formatTime={formatTime}
               handlers={messageHandlers}
+              updateMessageById={updateMessageById}
+              jwt={jwt}
               isLive={true}
+              setReplyingTo={setReplyingTo}
             />
           ))}
           <div ref={messagesEndRef} />

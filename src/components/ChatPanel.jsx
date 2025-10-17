@@ -23,7 +23,8 @@ export default function ChatPanel({
   selectedConversation,
   replyingTo,
   setReplyingTo,
-  conversations, // ADD THIS
+  conversations, 
+   updateMessageById: parentUpdateMessageById,
 }) {
   // NEW: Translation state
   const [currentLanguage, setCurrentLanguage] = useState("none");
@@ -311,6 +312,23 @@ const handleTypingIndicator = (isTyping) => {
       setUploadingMedia(false);
     }
   };
+
+
+   const updateMessageById = parentUpdateMessageById
+    ? parentUpdateMessageById
+    : (messageId, patch) => {
+        if (setMessages) {
+          setMessages((prev) =>
+            prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+          );
+        }
+        if (setConversationMessages) {
+          setConversationMessages((prev) =>
+            prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+          );
+        }
+      };
+
 
   return (
     <>
