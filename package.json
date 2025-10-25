@@ -10,11 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@azure/communication-calling": "^1.38.1",
+    "@azure/communication-calling": "^1.39.1",
     "@azure/communication-common": "^2.4.0",
     "@microsoft/signalr": "^9.0.6",
     "@tailwindcss/vite": "^4.1.12",
-    "axios": "^1.11.0",
+    "axios": "^1.12.2",
     "date-fns": "^4.1.0",
     "firebase": "^12.3.0",
     "lucide-react": "^0.544.0",
