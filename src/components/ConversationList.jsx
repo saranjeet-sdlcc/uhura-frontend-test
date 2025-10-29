@@ -14,8 +14,6 @@ export default function ConversationList({
   jwt,
 }) {
 
-
-
   // Auto-refresh presence every 30 seconds when viewing conversations
 useEffect(() => {
   if (!showConversations) return;

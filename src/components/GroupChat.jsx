@@ -1659,6 +1659,8 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom"; // 🆕 Added for URL-based group selection
 import FilePreview from "./FilePreview";
 import * as signalR from "@microsoft/signalr";
+import { normalizeGroupForUI } from "../utils/normalizeGroupMessage";
+
 
 export default function GroupChat({ jwt, userId }) {
   const [connection, setConnection] = useState(null);
@@ -1682,6 +1684,12 @@ const [error, setError] = useState(null);
   const [showStarred, setShowStarred] = useState(false);
   const [starredMessages, setStarredMessages] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
+
+  // --- Translation preference state (same behavior as ChatPanel) ---
+const [currentLanguage, setCurrentLanguage] = useState("none");
+const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+const [availableLanguages, setAvailableLanguages] = useState([]);
+const [loadingLanguages, setLoadingLanguages] = useState(false);
 
   // Create/Edit group state
   const [groupName, setGroupName] = useState("");
@@ -1796,6 +1804,85 @@ const [error, setError] = useState(null);
 
     return () => observer.disconnect();
   }, [messages, jwt, userId]);
+
+
+
+  useEffect(() => {
+  const fetchLanguagePreference = async () => {
+    try {
+      const res = await fetch("http://localhost:4002/translation/preference", {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      const data = await res.json();
+      if (data.success) setCurrentLanguage(data.languagePreference || "none");
+    } catch (err) {
+      console.warn("Failed to fetch language preference:", err);
+    }
+  };
+  if (jwt) fetchLanguagePreference();
+}, [jwt]);
+
+const fetchLanguages = async () => {
+  if (availableLanguages.length > 0) return;
+  setLoadingLanguages(true);
+  try {
+    const res = await fetch("http://localhost:4002/translation/languages", {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    const data = await res.json();
+    if (data.success) {
+      // same curated set you used in ChatPanel
+      const langs = [
+        { code: "none", name: "No Translation", nativeName: "Original" },
+        { code: "en", name: "English", nativeName: "English" },
+        { code: "zh-Hans", name: "Chinese Simplified", nativeName: "中文" },
+        { code: "es", name: "Spanish", nativeName: "Español" },
+        { code: "hi", name: "Hindi", nativeName: "हिन्दी" },
+        { code: "ar", name: "Arabic", nativeName: "العربية" },
+        { code: "fr", name: "French", nativeName: "Français" },
+        { code: "de", name: "German", nativeName: "Deutsch" },
+        { code: "ja", name: "Japanese", nativeName: "日本語" },
+        { code: "ko", name: "Korean", nativeName: "한국어" },
+        { code: "pt", name: "Portuguese", nativeName: "Português" },
+        { code: "ru", name: "Russian", nativeName: "Русский" },
+        { code: "it", name: "Italian", nativeName: "Italiano" },
+        { code: "tr", name: "Turkish", nativeName: "Türkçe" },
+        { code: "vi", name: "Vietnamese", nativeName: "Tiếng Việt" },
+      ];
+      setAvailableLanguages(langs);
+    }
+  } catch (err) {
+    console.warn("Failed to fetch languages:", err);
+  } finally {
+    setLoadingLanguages(false);
+  }
+};
+
+const updateLanguagePreference = async (langCode) => {
+  try {
+    const res = await fetch("http://localhost:4002/translation/preference", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: JSON.stringify({ language: langCode }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setCurrentLanguage(langCode);
+      setShowLanguageSelector(false);
+      // Optional UI ping:
+      // alert(`Language set to ${langCode === "none" ? "No Translation" : langCode.toUpperCase()}`);
+      // Reload messages for visible group so history reflects new preference
+      if (selectedGroup?.groupId) {
+        fetchGroupDetails(selectedGroup.groupId);
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to update language preference:", err);
+  }
+};
 
   /* ------------------ SignalR connect ------------------ */
   const connect = useCallback(async () => {
@@ -2046,7 +2133,8 @@ const [error, setError] = useState(null);
         });
         const data = await res.json();
         if (data.success) {
-          setMessages(data.messages.reverse());
+          const localized = (data.messages || []).map((m) => normalizeGroupForUI(m, userId));
+          setMessages(localized.reverse());
         } else {
           console.error("fetchGroupMessages error:", data.error);
           setMessages([]);
@@ -2288,6 +2376,12 @@ const [error, setError] = useState(null);
     };
     setMessages((prev) => [...prev, optimistic]);
     pendingLocalIdsRef.current[tempId] = { content: text, createdAt: now, files: selectedFiles, replyTo: replyingTo, tempUrls };
+// UX: clear immediately; we will restore on failure in catch block
+    setText("");
+    setSelectedFiles([]);
+    setShowFilePicker(false);
+    setReplyingTo(null);
+
 
     try {
       if (selectedFiles.length > 0) {
@@ -2308,10 +2402,10 @@ const [error, setError] = useState(null);
 
       const res = await fetch(endpoint, { method: "POST", headers, body });
       if (!res.ok) throw new Error("Failed to send message");
-      setText("");
-      setSelectedFiles([]);
-      setShowFilePicker(false);
-      setReplyingTo(null);
+      // setText("");
+      // setSelectedFiles([]);
+      // setShowFilePicker(false);
+      // setReplyingTo(null);
     } catch (e) {
       console.error("sendMessage error:", e);
       setMessages((prev) =>
@@ -2345,7 +2439,8 @@ const [error, setError] = useState(null);
       );
       const data = await res.json();
       if (data.success && Array.isArray(data.messages)) {
-        setMessages(data.messages);
+        const localized = data.messages.map((m) => normalizeGroupForUI(m, userId));
+         setMessages(localized);
       } else {
         alert("Failed to search messages: " + (data.error || "No results found"));
       }
@@ -2651,7 +2746,8 @@ useEffect(() => {
                           );
                           const data = await res.json();
                           if (data.success && Array.isArray(data.messages)) {
-                            setMessages(data.messages);
+                            const localized = data.messages.map((m) => normalizeGroupForUI(m, userId));
+                            setMessages(localized);
                           } else {
                             console.error("Clear search error:", data.error);
                             setMessages([]);
@@ -2669,20 +2765,62 @@ useEffect(() => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  className="text-sm px-3 py-1 border rounded hover:bg-gray-50"
-                  onClick={() => setDrawerOpen(true)}
-                >
-                  Group Info
-                </button>
-                <button
-                  onClick={leaveGroup}
-                  className="text-red-600 border border-red-400 px-3 py-1 rounded text-sm hover:bg-red-50"
-                >
-                  Leave
-                </button>
-              </div>
+              <div className="flex items-center gap-3">
+  {/* Translation selector (global; affects both 1:1 and group) */}
+  <div className="text-xs">
+    <div className="flex items-center justify-end">
+      <span className="mr-2 text-gray-600">🌐</span>
+      <span className="bg-blue-50 px-2 py-1 rounded border text-gray-700">
+        {currentLanguage === "none" ? "No Translation" : currentLanguage.toUpperCase()}
+      </span>
+      <button
+        onClick={() => {
+          setShowLanguageSelector((v) => !v);
+          if (!showLanguageSelector) fetchLanguages();
+        }}
+        className="ml-2 text-blue-600 hover:text-blue-700"
+        title="Change language"
+      >
+        Change
+      </button>
+    </div>
+
+    {showLanguageSelector && (
+      <div className="mt-2 max-h-56 overflow-y-auto border rounded bg-white shadow">
+        {loadingLanguages ? (
+          <div className="p-3 text-center text-gray-500">Loading…</div>
+        ) : (
+          availableLanguages.map((lang) => (
+            <button
+              key={lang.code}
+              onClick={() => updateLanguagePreference(lang.code)}
+              className={`w-full text-left px-3 py-2 hover:bg-blue-50 border-b last:border-b-0 ${
+                currentLanguage === lang.code ? "bg-blue-100 font-semibold" : ""
+              }`}
+            >
+              <div className="text-sm">{lang.name}</div>
+              <div className="text-[11px] text-gray-500">{lang.nativeName}</div>
+            </button>
+          ))
+        )}
+      </div>
+    )}
+  </div>
+
+  <button
+    className="text-sm px-3 py-1 border rounded hover:bg-gray-50"
+    onClick={() => setDrawerOpen(true)}
+  >
+    Group Info
+  </button>
+  <button
+    onClick={leaveGroup}
+    className="text-red-600 border border-red-400 px-3 py-1 rounded text-sm hover:bg-red-50"
+  >
+    Leave
+  </button>
+</div>
+
             </div>
 
             {/* Messages */}
@@ -3006,7 +3144,7 @@ useEffect(() => {
           const data = await res.json();
           if (data.success) {
             setInviteLink(data.inviteLink); // New state to show modal
-            navigator.clipboard.write(data.inviteLink);
+            navigator.clipboard.writeText(data.inviteLink);
           } else {
             setError("Failed to generate invite link: " + data.error);
           }
@@ -3036,7 +3174,7 @@ useEffect(() => {
         <button
           className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
           onClick={() => {
-            navigator.clipboard.write(inviteLink);
+            navigator.clipboard.writeText(inviteLink);
             alert("Link copied again!");
           }}
         >

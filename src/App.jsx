@@ -243,6 +243,10 @@ export default function App() {
       // Single entry point for server "newMessage"
       chatConnection.on("newMessage", (msg) => {
         console.log("📥 Received newMessage:", msg);
+        if (msg?.isGroup) {
+   // GroupChat.jsx maintains its own live stream; skip here
+   return;
+ }
         const incomingMsg = {
           ...msg,
           incoming: true,
