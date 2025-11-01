@@ -229,7 +229,7 @@ export default function Message({
 
     try {
       const res = await fetch(
-        `http://localhost:4002/chat/messages/${message.messageId}/translate`,
+        `http://165.227.209.124:4002/chat/messages/${message.messageId}/translate`,
         {
           method: "POST",
           headers: {

@@ -1,3 +1,4 @@
+// App.jsx
 import { useEffect, useState, useRef } from "react";
 import * as signalR from "@microsoft/signalr";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
@@ -106,13 +107,14 @@ export default function App() {
       headers: { Authorization: `Bearer ${jwt}` },
     }).catch((err) => console.warn("Set online failed:", err));
 
-    // Heartbeat every 15 seconds (half of TTL)
-    const heartbeatInterval = setInterval(() => {
-      fetch("http://localhost:4002/presence/heartbeat", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${jwt}` },
-      }).catch((err) => console.warn("Heartbeat failed:", err));
-    }, 15000); // Changed to 15 seconds
+    
+    // Uncomment to keep presence alive
+    // const heartbeatInterval = setInterval(() => {
+    //   fetch("http://localhost:4002/presence/heartbeat", {
+    //     method: "POST",
+    //     headers: { Authorization: `Bearer ${jwt}` },
+    //   }).catch((err) => console.warn("Heartbeat failed:", err));
+    // }, 15000); // Changed to 15 seconds
 
     // Handle tab close, browser close, or navigation away
     const handleBeforeUnload = () => {
@@ -144,7 +146,8 @@ export default function App() {
 
     // Set offline on unmount/disconnect
     return () => {
-      clearInterval(heartbeatInterval);
+      // uncomment to on heartbeat cleanUp
+      // clearInterval(heartbeatInterval);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
 
@@ -663,9 +666,9 @@ export default function App() {
       </div>
 
       {/* ✅ Properly placed routes inside Router */}
-      <Routes>
+      {/* <Routes>
   <Route path="/groups/invite/:token/join" element={<JoinGroup jwt={jwt} />} />
-</Routes>
+</Routes> */}
 
     </Router>
   );
