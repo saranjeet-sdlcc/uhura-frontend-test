@@ -1,4 +1,6 @@
 import { useState } from "react";
+import CallPanel from "./CallPanel";
+import VideoCall from "./VideoCall";
 
 export default function AuthForm({ onAuthSuccess }) {
   const [countryCode, setCountryCode] = useState("");
@@ -55,7 +57,8 @@ export default function AuthForm({ onAuthSuccess }) {
   };
 
   return (
-    <div className="max-w-md mx-auto">
+    // <div className="max-w-md mx-auto">
+    <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold mb-2">Authenticate with OTP</h2>
         <p className="text-sm text-gray-600">
@@ -114,6 +117,10 @@ export default function AuthForm({ onAuthSuccess }) {
           {loading ? "Verifying..." : "Verify OTP & Get Token"}
         </button>
       </form>
+      <hr className="mt-12" />
+
+      <CallPanel />
+      {/* <VideoCall /> */}
     </div>
   );
 }
