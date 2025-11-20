@@ -10,7 +10,6 @@ const BACKEND_URL = "http://138.197.26.120:4005";
 
 // const BACKEND_URL = "http://localhost:4005";
 
-
 // Supported Languages
 const SUPPORTED_LANGUAGES = [
   { code: "en-US", name: "English (US)", flag: "🇺🇸" },
@@ -62,7 +61,12 @@ export default function CallPanel() {
 
   // --- Socket.io Initialization and Event Listeners ---
   useEffect(() => {
-    const newSocket = io(BACKEND_URL);
+    // const newSocket = io("BACKEND_URL");
+    const newSocket = io("https://64286a3f4066.ngrok-free.app", {
+      transports: ["websocket", "polling"],
+      withCredentials: false,
+    });
+
     setSocket(newSocket);
     setStatus("Connecting to server...");
 
@@ -72,22 +76,24 @@ export default function CallPanel() {
     });
 
     // ✅ NEW: Listen for live subtitles
-  newSocket.on("live_subtitle", (data) => {
-    console.log("📝 Received subtitle:", data);
-    
-    // Add to subtitles array (keep last 20)
-    setSubtitles((prev) => [
-      ...prev,
-      {
-        id: Date.now() + Math.random(), // Unique ID
-        translated: data.translated,
-        original: data.original,
-        sourceLanguage: data.sourceLanguage,
-        targetLanguage: data.targetLanguage,
-        timestamp: data.timestamp,
-      },
-    ].slice(-20)); // Keep only last 20 subtitles
-  });
+    newSocket.on("live_subtitle", (data) => {
+      console.log("📝 Received subtitle:", data);
+
+      // Add to subtitles array (keep last 20)
+      setSubtitles((prev) =>
+        [
+          ...prev,
+          {
+            id: Date.now() + Math.random(), // Unique ID
+            translated: data.translated,
+            original: data.original,
+            sourceLanguage: data.sourceLanguage,
+            targetLanguage: data.targetLanguage,
+            timestamp: data.timestamp,
+          },
+        ].slice(-20)
+      ); // Keep only last 20 subtitles
+    });
 
     // Incoming call event
     newSocket.on("incoming_call", (data) => {
@@ -142,9 +148,7 @@ export default function CallPanel() {
       console.log("📴 Call ended by other party:", data);
       const minutes = Math.floor(data.duration / 60);
       const seconds = data.duration % 60;
-      setStatus(
-        `📴 Call ended (Duration: ${minutes}m ${seconds}s)`
-      );
+      setStatus(`📴 Call ended (Duration: ${minutes}m ${seconds}s)`);
       cleanupCallState();
       if (call) {
         call.hangUp().catch((err) => console.error("Hangup error:", err));
@@ -240,7 +244,10 @@ export default function CallPanel() {
   // Join the ACS Group Call
   const joinGroupCall = async (agent, dm, groupId) => {
     try {
-      const newCall = agent.join({ groupId }, { audioOptions: { muted: false } });
+      const newCall = agent.join(
+        { groupId },
+        { audioOptions: { muted: false } }
+      );
 
       // Ensure speaker is selected
       const speakers = await dm.getSpeakers();
@@ -528,7 +535,10 @@ export default function CallPanel() {
               <button
                 onClick={handleCall}
                 disabled={
-                  !myUserId || !targetUserId || !myLanguage || !socket?.connected
+                  !myUserId ||
+                  !targetUserId ||
+                  !myLanguage ||
+                  !socket?.connected
                 }
                 className="w-full py-3 rounded-lg bg-green-600 text-white font-bold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
@@ -541,7 +551,9 @@ export default function CallPanel() {
         {/* Incoming Call Section */}
         {incomingCall && !call && (
           <div className="space-y-4 p-5 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg shadow-lg">
-            <h2 className="text-2xl font-bold text-center">📞 Incoming Call!</h2>
+            <h2 className="text-2xl font-bold text-center">
+              📞 Incoming Call!
+            </h2>
             <div className="bg-white/10 backdrop-blur p-3 rounded-lg">
               <p className="text-gray-200 text-sm">
                 From:{" "}
@@ -605,106 +617,124 @@ export default function CallPanel() {
           </div>
         )}
 
-     {/* Active Call Section */}
-{call && (
-  <div className="space-y-4">
-    <div className="bg-gradient-to-br from-green-600 to-teal-600 p-5 rounded-lg shadow-lg text-center">
-      <h2 className="text-2xl font-bold">🔊 Call in Progress</h2>
+        {/* Active Call Section */}
+        {call && (
+          <div className="space-y-4">
+            <div className="bg-gradient-to-br from-green-600 to-teal-600 p-5 rounded-lg shadow-lg text-center">
+              <h2 className="text-2xl font-bold">🔊 Call in Progress</h2>
 
-      {/* Call Duration Timer */}
-      <div className="mt-2 text-3xl font-mono font-bold text-white">
-        {formatDuration(callDuration)}
-      </div>
-
-      <div className="mt-3 bg-white/10 backdrop-blur p-3 rounded-lg space-y-1">
-        <p className="text-sm text-gray-100">
-          You speak:{" "}
-          {SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage)?.flag}{" "}
-          <b>
-            {SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage)?.name}
-          </b>
-        </p>
-        {calleeLanguage && (
-          <p className="text-sm text-gray-100">
-            They speak:{" "}
-            {SUPPORTED_LANGUAGES.find((l) => l.code === calleeLanguage)?.flag}{" "}
-            <b>
-              {SUPPORTED_LANGUAGES.find((l) => l.code === calleeLanguage)?.name}
-            </b>
-          </p>
-        )}
-      </div>
-    </div>
-
-    {/* ✅ Enhanced Subtitles Display */}
-    <div className="bg-gray-700 rounded-lg shadow-lg overflow-hidden">
-      <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-3">
-        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <span>💬</span>
-          <span>Live Translation Subtitles</span>
-        </h3>
-      </div>
-      
-      <div className="p-4 max-h-64 overflow-y-auto space-y-3 bg-gray-800">
-        {subtitles.length === 0 ? (
-          <p className="text-center text-gray-500 text-sm py-8">
-            Subtitles will appear here during conversation...
-          </p>
-        ) : (
-          subtitles.map((subtitle) => (
-            <div
-              key={subtitle.id}
-              className="bg-gray-700 rounded-lg p-3 border-l-4 border-purple-500 animate-fadeIn"
-            >
-              {/* Translated text (what you hear) */}
-              <p className="text-white font-medium text-base mb-2">
-                {subtitle.translated}
-              </p>
-              
-              {/* Original text (what they said) */}
-              <div className="flex items-start gap-2 text-xs text-gray-400">
-                <span className="font-semibold">Original:</span>
-                <span className="italic">{subtitle.original}</span>
+              {/* Call Duration Timer */}
+              <div className="mt-2 text-3xl font-mono font-bold text-white">
+                {formatDuration(callDuration)}
               </div>
 
-              {/* Language indicator */}
-              <div className="flex items-center gap-2 mt-2 text-xs">
-                <span className="px-2 py-1 bg-blue-600/30 rounded text-blue-300">
-                  {SUPPORTED_LANGUAGES.find((l) => l.code === subtitle.sourceLanguage)?.flag}{" "}
-                  {subtitle.sourceLanguage}
-                </span>
-                <span className="text-gray-500">→</span>
-                <span className="px-2 py-1 bg-green-600/30 rounded text-green-300">
-                  {SUPPORTED_LANGUAGES.find((l) => l.code === subtitle.targetLanguage)?.flag}{" "}
-                  {subtitle.targetLanguage}
-                </span>
+              <div className="mt-3 bg-white/10 backdrop-blur p-3 rounded-lg space-y-1">
+                <p className="text-sm text-gray-100">
+                  You speak:{" "}
+                  {SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage)?.flag}{" "}
+                  <b>
+                    {
+                      SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage)
+                        ?.name
+                    }
+                  </b>
+                </p>
+                {calleeLanguage && (
+                  <p className="text-sm text-gray-100">
+                    They speak:{" "}
+                    {
+                      SUPPORTED_LANGUAGES.find((l) => l.code === calleeLanguage)
+                        ?.flag
+                    }{" "}
+                    <b>
+                      {
+                        SUPPORTED_LANGUAGES.find(
+                          (l) => l.code === calleeLanguage
+                        )?.name
+                      }
+                    </b>
+                  </p>
+                )}
               </div>
             </div>
-          ))
+
+            {/* ✅ Enhanced Subtitles Display */}
+            <div className="bg-gray-700 rounded-lg shadow-lg overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>💬</span>
+                  <span>Live Translation Subtitles</span>
+                </h3>
+              </div>
+
+              <div className="p-4 max-h-64 overflow-y-auto space-y-3 bg-gray-800">
+                {subtitles.length === 0 ? (
+                  <p className="text-center text-gray-500 text-sm py-8">
+                    Subtitles will appear here during conversation...
+                  </p>
+                ) : (
+                  subtitles.map((subtitle) => (
+                    <div
+                      key={subtitle.id}
+                      className="bg-gray-700 rounded-lg p-3 border-l-4 border-purple-500 animate-fadeIn"
+                    >
+                      {/* Translated text (what you hear) */}
+                      <p className="text-white font-medium text-base mb-2">
+                        {subtitle.translated}
+                      </p>
+
+                      {/* Original text (what they said) */}
+                      <div className="flex items-start gap-2 text-xs text-gray-400">
+                        <span className="font-semibold">Original:</span>
+                        <span className="italic">{subtitle.original}</span>
+                      </div>
+
+                      {/* Language indicator */}
+                      <div className="flex items-center gap-2 mt-2 text-xs">
+                        <span className="px-2 py-1 bg-blue-600/30 rounded text-blue-300">
+                          {
+                            SUPPORTED_LANGUAGES.find(
+                              (l) => l.code === subtitle.sourceLanguage
+                            )?.flag
+                          }{" "}
+                          {subtitle.sourceLanguage}
+                        </span>
+                        <span className="text-gray-500">→</span>
+                        <span className="px-2 py-1 bg-green-600/30 rounded text-green-300">
+                          {
+                            SUPPORTED_LANGUAGES.find(
+                              (l) => l.code === subtitle.targetLanguage
+                            )?.flag
+                          }{" "}
+                          {subtitle.targetLanguage}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Call Control Buttons */}
+            <div className="space-y-2">
+              <button
+                onClick={hangUp}
+                className="w-full py-3 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition"
+              >
+                🔚 End Call
+              </button>
+
+              {callRole === "caller" && !calleeLanguage && (
+                <button
+                  onClick={handleCancel}
+                  className="w-full py-2 rounded-lg bg-orange-600 text-white font-semibold hover:bg-orange-700 transition"
+                >
+                  🚫 Cancel Call
+                </button>
+              )}
+            </div>
+          </div>
         )}
-      </div>
-    </div>
-
-    {/* Call Control Buttons */}
-    <div className="space-y-2">
-      <button
-        onClick={hangUp}
-        className="w-full py-3 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition"
-      >
-        🔚 End Call
-      </button>
-
-      {callRole === "caller" && !calleeLanguage && (
-        <button
-          onClick={handleCancel}
-          className="w-full py-2 rounded-lg bg-orange-600 text-white font-semibold hover:bg-orange-700 transition"
-        >
-          🚫 Cancel Call
-        </button>
-      )}
-    </div>
-  </div>
-)}
 
         {/* Instructions */}
         <div className="text-xs text-gray-500 mt-4 space-y-1 pt-4 border-t border-gray-700">
