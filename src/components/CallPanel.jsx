@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { io } from "socket.io-client";
 
 // --- Configuration ---
-const BACKEND_URL = "http://138.197.26.120:4005";
+const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
 
 // const BACKEND_URL = "http://localhost:4005";
 
@@ -61,19 +61,29 @@ export default function CallPanel() {
 
   // --- Socket.io Initialization and Event Listeners ---
   useEffect(() => {
-    // const newSocket = io("BACKEND_URL");
-    const newSocket = io("https://64286a3f4066.ngrok-free.app", {
-      transports: ["websocket", "polling"],
-      withCredentials: false,
-    });
+    
+      const newSocket = io(BACKEND_URL);   
+    
+    // const newSocket = io("https://uhura-pro.duckdns.org", {
+    // }); // THis
+    //   transports: ["websocket", "polling"],
+    //   withCredentials: false,
+
+    console.log("🔌 Creating new socket instance");
 
     setSocket(newSocket);
     setStatus("Connecting to server...");
 
     newSocket.on("connect", () => {
-      console.log("Socket connected:", newSocket.id);
+      console.log("🟢 Socket connected:", newSocket.id);
       setStatus("Online");
     });
+
+      // 🔴 add this block here
+  newSocket.on("connect_error", (err) => {
+    console.error("🔴 connect_error (ngrok):", err, err.message, err.description);
+    setStatus(`Connection error: ${err.message || "unknown"}`);
+  });
 
     // ✅ NEW: Listen for live subtitles
     newSocket.on("live_subtitle", (data) => {
@@ -155,7 +165,9 @@ export default function CallPanel() {
       }
     });
 
-    newSocket.on("disconnect", () => {
+    newSocket.on("disconnect", (reason) => {
+      console.log("🔴 Test disconnected:", reason);
+
       console.log("Socket disconnected");
       setStatus("Offline");
     });
