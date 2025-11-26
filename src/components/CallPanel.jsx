@@ -1,14 +1,13 @@
-import { useState, useEffect, useRef } from "react";
 import { CallClient } from "@azure/communication-calling";
 import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 import axios from "axios";
-import { v4 as uuidv4 } from "uuid";
+import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { v4 as uuidv4 } from "uuid";
 
 // --- Configuration ---
-const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
 
-// const BACKEND_URL = "http://localhost:4005";
+const BACKEND_URL = "http://localhost:4005";
 
 // Supported Languages
 const SUPPORTED_LANGUAGES = [
@@ -55,20 +54,15 @@ export default function CallPanel() {
   // --- Subtitle Display ---
   const [subtitles, setSubtitles] = useState([]);
 
+  const [jwtToken, setJwtToken] = useState("");
+
   // --- Call Timer ---
   const [callDuration, setCallDuration] = useState(0);
   const timerRef = useRef(null);
 
   // --- Socket.io Initialization and Event Listeners ---
   useEffect(() => {
-    
-      const newSocket = io(BACKEND_URL);   
-    
-    // const newSocket = io("https://uhura-pro.duckdns.org", {
-    // }); // THis
-    //   transports: ["websocket", "polling"],
-    //   withCredentials: false,
-
+    const newSocket = io(BACKEND_URL);
     console.log("🔌 Creating new socket instance");
 
     setSocket(newSocket);
@@ -79,11 +73,16 @@ export default function CallPanel() {
       setStatus("Online");
     });
 
-      // 🔴 add this block here
-  newSocket.on("connect_error", (err) => {
-    console.error("🔴 connect_error (ngrok):", err, err.message, err.description);
-    setStatus(`Connection error: ${err.message || "unknown"}`);
-  });
+    // 🔴 add this block here
+    newSocket.on("connect_error", (err) => {
+      console.error(
+        "🔴 connect_error (ngrok):",
+        err,
+        err.message,
+        err.description
+      );
+      setStatus(`Connection error: ${err.message || "unknown"}`);
+    });
 
     // ✅ NEW: Listen for live subtitles
     newSocket.on("live_subtitle", (data) => {
@@ -296,25 +295,34 @@ export default function CallPanel() {
     if (!myLanguage) {
       return alert("Please select your language");
     }
+    if (!jwtToken) {
+      return alert("No JWT token provided");
+    }
+
     setStatus(`Initiating call to ${targetUserId}...`);
     setSubtitles([]);
 
     try {
-      // Tell backend to initiate the call
-      const res = await axios.post(`${BACKEND_URL}/call/initiate`, {
-        callerUserId: myUserId,
-        calleeUserId: targetUserId,
-        callerLanguage: myLanguage,
-      });
+      const res = await axios.post(
+        `${BACKEND_URL}/call/initiate`,
+        {
+          // callerUserId: myUserId,
+          calleeUserId: targetUserId,
+          callerLanguage: myLanguage,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`, // my user id
+          },
+        }
+      );
 
       const { callId, acsUser, groupId, bridgeId } = res.data;
 
-      // Store call session data
       setCurrentCallId(callId);
       setCurrentBridgeId(bridgeId);
       setCallRole("caller");
 
-      // Initialize ACS agent and join call
       const { agent, dm } = await initCallAgent(acsUser.token);
       if (!agent || !dm) return;
 
@@ -342,11 +350,19 @@ export default function CallPanel() {
 
     try {
       // Tell backend we are accepting
-      const res = await axios.post(`${BACKEND_URL}/call/accept`, {
-        calleeUserId: myUserId,
-        bridgeId: incomingCall.bridgeId,
-        calleeLanguage: myLanguage,
-      });
+      const res = await axios.post(
+        `${BACKEND_URL}/call/accept`,
+        {
+          // calleeUserId: myUserId,
+          bridgeId: incomingCall.bridgeId,
+          calleeLanguage: myLanguage,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+          },
+        }
+      );
 
       const { callId, acsUser, groupId, bridgeId, callerLanguage } = res.data;
 
@@ -389,10 +405,18 @@ export default function CallPanel() {
     if (!incomingCall) return;
 
     try {
-      await axios.post(`${BACKEND_URL}/call/reject`, {
-        calleeUserId: myUserId,
-        bridgeId: incomingCall.bridgeId,
-      });
+      await axios.post(
+        `${BACKEND_URL}/call/reject`,
+        {
+          // calleeUserId: myUserId,
+          bridgeId: incomingCall.bridgeId,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+          },
+        }
+      );
 
       setIncomingCall(null);
       setStatus("Call rejected");
@@ -412,10 +436,18 @@ export default function CallPanel() {
     try {
       setStatus("Cancelling call...");
 
-      await axios.post(`${BACKEND_URL}/call/cancel`, {
-        callerUserId: myUserId,
-        bridgeId: currentBridgeId,
-      });
+      await axios.post(
+        `${BACKEND_URL}/call/cancel`,
+        {
+          callerUserId: myUserId,
+          bridgeId: currentBridgeId,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+          },
+        }
+      );
 
       // Hangup ACS call
       if (call) {
@@ -432,6 +464,7 @@ export default function CallPanel() {
   };
 
   /**
+   *
    * Hang up an active call (both caller and callee)
    */
   const hangUp = async () => {
@@ -442,10 +475,18 @@ export default function CallPanel() {
       stopCallTimer();
 
       // Tell backend to end the call
-      const res = await axios.post(`${BACKEND_URL}/call/end`, {
-        userId: myUserId,
-        bridgeId: currentBridgeId,
-      });
+      const res = await axios.post(
+        `${BACKEND_URL}/call/end`,
+        {
+          userId: myUserId,
+          bridgeId: currentBridgeId,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+          },
+        }
+      );
 
       // Hangup ACS call
       await call.hangUp();
@@ -462,6 +503,20 @@ export default function CallPanel() {
     }
   };
 
+  const callHistory = async () => {
+    try {
+      const res = await axios.get(`${BACKEND_URL}/call/history`, {
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+        },
+      });
+
+      console.log("Response from call history:", res.data);
+    } catch (err) {
+      console.log("Error while fetching the History:", err);
+    }
+  };
+
   // --- UI Rendering ---
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4 flex justify-center items-center font-sans">
@@ -472,10 +527,19 @@ export default function CallPanel() {
         <p className="text-center text-gray-400 text-sm">
           <b>Status:</b> {status}
         </p>
+        <button onClick={callHistory}>Call History</button>
 
         <p>(1) 8b7829d2-e06c-4da5-9e09-1cd75ba0995e</p>
         <p>or</p>
         <p>(2) 4ffc1ced-f47f-4702-b49a-bcb44bb534a9</p>
+
+        <input
+          type="text"
+          placeholder="Paste JWT Token"
+          value={jwtToken}
+          onChange={(e) => setJwtToken(e.target.value)}
+          style={{ width: "100%", marginBottom: 10 }}
+        />
 
         {/* User Setup Section */}
         {!call && !incomingCall && (
