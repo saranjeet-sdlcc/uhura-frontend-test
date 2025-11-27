@@ -7,7 +7,8 @@ import { v4 as uuidv4 } from "uuid";
 
 // --- Configuration ---
 
-const BACKEND_URL = "http://localhost:4005";
+// const BACKEND_URL = "http://localhost:4005";
+const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
 
 // Supported Languages
 const SUPPORTED_LANGUAGES = [
