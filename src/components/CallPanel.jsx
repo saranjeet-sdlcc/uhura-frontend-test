@@ -10,6 +10,9 @@ import { v4 as uuidv4 } from "uuid";
 // const BACKEND_URL = "http://localhost:4005";
 const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
 
+console.log("123456789");
+
+
 // Supported Languages
 const SUPPORTED_LANGUAGES = [
   { code: "en-US", name: "English (US)", flag: "🇺🇸" },
