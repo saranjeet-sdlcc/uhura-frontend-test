@@ -9,7 +9,9 @@ import { v4 as uuidv4 } from "uuid";
 
 // const BACKEND_URL = "http://localhost:4005";
 const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
+// const BACKEND_URL = "http://192.168.1.119:4005";
 
+  
 console.log("123456789");
 
 

@@ -52,7 +52,7 @@ export default function VideoCall() {
   };
 
   // Init call agent
-  const initCallAgent = async () => {
+  const initCallAgent = async () => { 
     try {
       if (!token) return alert("Create ACS user first");
       const client = new CallClient();

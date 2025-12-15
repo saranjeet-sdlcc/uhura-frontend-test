@@ -66,7 +66,7 @@ export default function AuthForm({ onAuthSuccess }) {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-1">Country Code</label>
           <input
@@ -116,7 +116,7 @@ export default function AuthForm({ onAuthSuccess }) {
         >
           {loading ? "Verifying..." : "Verify OTP & Get Token"}
         </button>
-      </form>
+      </form> */}
       <hr className="mt-12" />
 
       <CallPanel />
