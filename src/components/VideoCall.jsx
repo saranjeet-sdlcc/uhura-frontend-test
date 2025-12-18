@@ -1,403 +1,205 @@
-// VideoCall.jsx
-import React, { useEffect, useRef, useState } from "react";
-import {
-  CallClient,
-  LocalVideoStream,
-  VideoStreamRenderer,
-} from "@azure/communication-calling";
-import { AzureCommunicationTokenCredential } from "@azure/communication-common";
-import axios from "axios";
-import { v4 as uuidv4 } from "uuid";
-
-const BACKEND_URL = "http://localhost:4006";
-
-export default function VideoCall() {
-  const [token, setToken] = useState("");
-  const [acsUserId, setAcsUserId] = useState("");
-
-  const [callClient, setCallClient] = useState(null);
+import React, { useEffect, useState, useRef } from 'react';
+import { CallClient, LocalVideoStream, VideoStreamRenderer } from '@azure/communication-calling';
+import { AzureCommunicationTokenCredential } from '@azure/communication-common';
+// VideoStreamRenderer
+const VideoCall = () => {
+  // State
+  const [token, setToken] = useState('');
+  const [userId, setUserId] = useState('');
   const [callAgent, setCallAgent] = useState(null);
-  const [deviceManager, setDeviceManager] = useState(null);
-
   const [call, setCall] = useState(null);
-  const [cameraOn, setCameraOn] = useState(false);
-  const [micOn, setMicOn] = useState(true);
+  const [isCallConnected, setIsCallConnected] = useState(false);
 
-  const [groupId, setGroupId] = useState("");
-  const [bridgeId, setBridgeId] = useState("");
-  const [leg, setLeg] = useState("A");
+  // Refs for UI rendering
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
 
-  const [status, setStatus] = useState("Not connected");
-  const [botJoined, setBotJoined] = useState(false);
-
-  const localContainerRef = useRef(null);
-  const remoteContainerRef = useRef(null);
-
-  // keep renderer refs for proper disposal
-  const localRendererRef = useRef(null);
-  const remoteRendererRef = useRef(null);
-  const localVideoStreamRef = useRef(null);
-
-  // Create ACS user & token
-  const createAcsUser = async () => {
-    try {
-      const res = await axios.post(`${BACKEND_URL}/create-acs-user`);
-      setAcsUserId(res.data.acsUserId);
-      setToken(res.data.token);
-      setStatus("✅ ACS user created");
-    } catch (err) {
-      console.error(err);
-      setStatus("❌ Failed to create ACS user");
-    }
-  };
-
-  // Init call agent
-  const initCallAgent = async () => { 
-    try {
-      if (!token) return alert("Create ACS user first");
-      const client = new CallClient();
-      const credential = new AzureCommunicationTokenCredential(token);
-      const agent = await client.createCallAgent(credential, {
-        displayName: `User-${leg}`,
-      });
-      const dm = await client.getDeviceManager();
-      await dm.askDevicePermission({ audio: true, video: true });
-
-      setCallClient(client);
-      setCallAgent(agent);
-      setDeviceManager(dm);
-      setStatus("✅ Call agent ready");
-    } catch (err) {
-      console.error(err);
-      setStatus("❌ Failed to init call agent");
-    }
-  };
-
-  // helper: dispose local renderer
-  const disposeLocalRenderer = async () => {
-    try {
-      if (localRendererRef.current) {
-        await localRendererRef.current.dispose();
-        localRendererRef.current = null;
-      }
-    } catch (err) {
-      console.warn("Error disposing local renderer:", err);
-    }
-    if (localContainerRef.current) localContainerRef.current.innerHTML = "";
-    if (localVideoStreamRef.current) {
-      // don't stop device, just clear ref — the SDK manages it
-      localVideoStreamRef.current = null;
-    }
-  };
-
-  // helper: dispose remote renderer
-  const disposeRemoteRenderer = async () => {
-    try {
-      if (remoteRendererRef.current) {
-        await remoteRendererRef.current.dispose();
-        remoteRendererRef.current = null;
-      }
-    } catch (err) {
-      console.warn("Error disposing remote renderer:", err);
-    }
-    if (remoteContainerRef.current) remoteContainerRef.current.innerHTML = "";
-  };
-
-  // Join video call (renders local + remote)
-  const joinCall = async () => {
-    if (!callAgent || !groupId || !deviceManager) return alert("Missing call agent or groupId");
-
-    setStatus("Joining video call...");
-
-    try {
-      const cameras = await deviceManager.getCameras();
-      if (!cameras || cameras.length === 0) {
-        alert("No camera found");
-        setStatus("No camera found");
-        return;
-      }
-
-      // create local video stream from first camera
-      const localVideoStream = new LocalVideoStream(cameras[0]);
-      localVideoStreamRef.current = localVideoStream;
-
-      // join group call with video options
-      const newCall = callAgent.join(
-        { groupId },
-        {
-          audioOptions: { muted: !micOn },
-          videoOptions: { localVideoStreams: [localVideoStream] },
-        }
-      );
-
-      setCall(newCall);
-
-      // render local via VideoStreamRenderer
-      await disposeLocalRenderer();
-      const localRenderer = new VideoStreamRenderer(localVideoStream);
-      localRendererRef.current = localRenderer;
-      const localView = await localRenderer.createView();
-      if (localContainerRef.current) {
-        localContainerRef.current.appendChild(localView.target);
-      }
-      setCameraOn(true);
-
-      // handle remote participants
-      newCall.on("remoteParticipantsUpdated", (e) => {
-        // Process added participants
-        e.added.forEach((participant) => {
-          // When their video streams update
-          participant.on("videoStreamsUpdated", async (vs) => {
-            try {
-              // Look for available streams and render the first available
-              for (const stream of participant.videoStreams) {
-                if (stream.isAvailable) {
-                  // dispose previous remote renderer and create new
-                  await disposeRemoteRenderer();
-                  const remoteRenderer = new VideoStreamRenderer(stream);
-                  remoteRendererRef.current = remoteRenderer;
-                  const remoteView = await remoteRenderer.createView();
-                  if (remoteContainerRef.current) {
-                    remoteContainerRef.current.innerHTML = "";
-                    remoteContainerRef.current.appendChild(remoteView.target);
-                  }
-                  break;
-                }
-              }
-            } catch (err) {
-              console.warn("Error rendering remote stream:", err);
-            }
-          });
-
-          // If participant already has available streams, try to render immediately
-          participant.videoStreams.forEach(async (stream) => {
-            try {
-              if (stream.isAvailable) {
-                await disposeRemoteRenderer();
-                const remoteRenderer = new VideoStreamRenderer(stream);
-                remoteRendererRef.current = remoteRenderer;
-                const remoteView = await remoteRenderer.createView();
-                if (remoteContainerRef.current) {
-                  remoteContainerRef.current.innerHTML = "";
-                  remoteContainerRef.current.appendChild(remoteView.target);
-                }
-              }
-            } catch (err) {
-              console.warn("Error rendering initial remote stream:", err);
-            }
-          });
-        });
-
-        // Process removed participants: clear remote if no participants left
-        e.removed.forEach(async () => {
-          const rp = newCall.remoteParticipants;
-          if (!rp || rp.length === 0) {
-            await disposeRemoteRenderer();
-          }
-        });
-      });
-
-      // state change handling
-      newCall.on("stateChanged", () => {
-        if (newCall.state === "Disconnected") {
-          setStatus("📴 Call ended");
-          setCall(null);
-          setBotJoined(false);
-          // cleanup
-          disposeLocalRenderer();
-          disposeRemoteRenderer();
-          setCameraOn(false);
-        }
-      });
-
-      setStatus("📞 Joined video call");
-    } catch (err) {
-      console.error("joinCall error:", err);
-      setStatus("❌ Failed joining video call");
-    }
-  };
-
-  // Ask backend to add bot to this leg
-  const joinBot = async () => {
-    if (!groupId || !bridgeId) return alert("Enter both bridgeId and groupId");
-    try {
-      await axios.post(`${BACKEND_URL}/join-bridge-leg`, {
-        groupId,
-        bridgeId,
-        leg,
-      });
-      setBotJoined(true);
-      setStatus(`🤖 Bot joined leg ${leg}`);
-    } catch (err) {
-      console.error(err);
-      setStatus("❌ Failed to add bot");
-    }
-  };
-
-  // Hang up and cleanup
-  const hangUp = async () => {
-    if (!call) return;
-    try {
-      await call.hangUp();
-    } catch (e) {
-      console.warn("hangUp error:", e);
-    }
-    setCall(null);
-    setBotJoined(false);
-    setStatus("📴 Hung up");
-    await disposeLocalRenderer();
-    await disposeRemoteRenderer();
-    setCameraOn(false);
-  };
-
-  // cleanup on unmount
+  // 1. Fetch Token on Component Mount
   useEffect(() => {
-    return () => {
-      (async () => {
-        try {
-          if (call) {
-            try {
-              await call.hangUp();
-            } catch (e) {}
-          }
-          await disposeLocalRenderer();
-          await disposeRemoteRenderer();
-        } catch (e) {
-          // swallow
-        }
-      })();
+    const fetchToken = async () => {
+      try {
+        // Fetch from your express backend
+        const response = await fetch('http://localhost:4006/get-token');
+        const data = await response.json();
+        setToken(data.token);
+        setUserId(data.userId);
+        console.log("Token fetched for user:", data.userId);
+      } catch (error) {
+        console.error("Error fetching token:", error);
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchToken();
   }, []);
 
+  // 2. Initialize Azure Call Agent when token is ready
+  useEffect(() => {
+    if (token) {
+      const initCallAgent = async () => {
+        try {
+          const callClient = new CallClient();
+          const tokenCredential = new AzureCommunicationTokenCredential(token);
+          const agent = await callClient.createCallAgent(tokenCredential);
+          setCallAgent(agent);
+          console.log("Call Agent Initialized");
+        } catch (error) {
+          console.error("Failed to init call agent:", error);
+        }
+      };
+      initCallAgent();
+    }
+  }, [token]);
+
+  // 3. Function to Start Call (Echo Bot)
+  const startCall = async () => {
+    if (!callAgent) return;
+
+    try {
+      // Get local camera access
+      const deviceManager = await new CallClient().getDeviceManager();
+      await deviceManager.askDevicePermission({ video: true, audio: true });
+      const cameras = await deviceManager.getCameras();
+      
+      // Create local video stream
+      const localVideoStream = new LocalVideoStream(cameras[0]);
+      
+      // CALL THE ECHO BOT (Standard Test ID: 8:echo123)
+      const callOptions = { videoOptions: { localVideoStreams: [localVideoStream] } };
+      const currentCall = callAgent.startCall([{ id: '8:echo123' }], callOptions);
+      
+      setCall(currentCall);
+      setIsCallConnected(true);
+
+      // --- RENDER LOCAL VIDEO ---
+      // We need a renderer to display the video stream in the DOM
+      const localRenderer = new VideoStreamRenderer(localVideoStream);
+      const localView = await localRenderer.createView({ scalingMode: 'Crop' });
+      if (localVideoRef.current) {
+        localVideoRef.current.appendChild(localView.target);
+      }
+
+      // --- HANDLE REMOTE PARTICIPANTS (The Echo Bot) ---
+      currentCall.on('stateChanged', () => {
+        console.log("Call state:", currentCall.state);
+        if (currentCall.state === 'Disconnected') {
+          setIsCallConnected(false);
+          setCall(null);
+          // Cleanup renderers here in production code
+        }
+      });
+
+      currentCall.remoteParticipants.forEach(participant => {
+        subscribeToRemoteParticipant(participant);
+      });
+
+      currentCall.on('remoteParticipantsUpdated', e => {
+        e.added.forEach(participant => subscribeToRemoteParticipant(participant));
+      });
+
+    } catch (error) {
+      console.error("Failed to start call:", error);
+    }
+  };
+
+  // 4. Helper to Render Remote Video
+  const subscribeToRemoteParticipant = (participant) => {
+    // Subscribe to the video streams of the participant
+    participant.videoStreams.forEach(stream => {
+      renderRemoteStream(stream);
+    });
+
+    participant.on('videoStreamsUpdated', e => {
+      e.added.forEach(stream => renderRemoteStream(stream));
+    });
+  };
+
+  const renderRemoteStream = async (stream) => {
+    if (stream.isAvailable) {
+      const renderer = new VideoStreamRenderer(stream);
+      const view = await renderer.createView({ scalingMode: 'Crop' });
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.appendChild(view.target);
+      }
+    }
+    
+    // Listen if stream becomes available later (common in ACS)
+    stream.on('availabilityChanged', async () => {
+      if (stream.isAvailable) {
+        const renderer = new VideoStreamRenderer(stream);
+        const view = await renderer.createView({ scalingMode: 'Crop' });
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.innerHTML = ''; // Clear previous
+          remoteVideoRef.current.appendChild(view.target);
+        }
+      }
+    });
+  };
+
+  // 5. Function to End Call
+  const endCall = () => {
+    if (call) {
+      call.hangUp({ forEveryone: true });
+      setIsCallConnected(false);
+      setCall(null);
+      // Clean DOM
+      if (localVideoRef.current) localVideoRef.current.innerHTML = '';
+      if (remoteVideoRef.current) remoteVideoRef.current.innerHTML = '';
+    }
+  };
+
+  // Needed for renderer class instantiation inside component
+  // (In a real app, import { VideoStreamRenderer } from SDK, 
+  // but sometimes it must be imported dynamically or used from the package)
+  // const { VideoStreamRenderer } = require('@azure/communication-calling');
+
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center items-center p-6">
-      <div className="bg-white shadow-xl rounded-2xl p-6 w-full max-w-md space-y-5">
-        <h1 className="text-2xl font-bold text-center text-gray-800">
-          🌐 Live Translated Video Call
-        </h1>
-
-        {/* Video Panels */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-black rounded-xl h-48 flex flex-col overflow-hidden">
-            <p className="text-center p-1 text-gray-300">You</p>
-            <div ref={localContainerRef} className="flex-1" />
-          </div>
-
-          <div className="bg-black rounded-xl h-48 flex flex-col overflow-hidden">
-            <p className="text-center p-1 text-gray-300">Remote</p>
-            <div ref={remoteContainerRef} className="flex-1" />
-          </div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+      <h1 className="text-2xl font-bold mb-4">Azure Video Call Test</h1>
+      
+      {/* Video Container */}
+      <div className="flex flex-row gap-4 mb-6 h-64 w-full max-w-4xl justify-center">
+        
+        {/* Local Video (You) */}
+        <div 
+          ref={localVideoRef} 
+          className="w-1/2 bg-black rounded-lg overflow-hidden border-2 border-gray-300 relative"
+        >
+          <span className="absolute top-2 left-2 text-white bg-black/50 px-2 rounded text-xs z-10">You</span>
         </div>
 
-        {/* IDs & controls */}
-        <section className="space-y-2">
-          <div>
-            <label className="text-sm font-medium">Bridge ID (same on both tabs)</label>
-            <div className="flex gap-2 mt-1">
-              <input
-                type="text"
-                className="border rounded-lg p-2 flex-1"
-                placeholder="Enter or generate Bridge ID"
-                value={bridgeId}
-                onChange={(e) => setBridgeId(e.target.value)}
-              />
-              <button
-                onClick={() => setBridgeId(uuidv4())}
-                className="bg-gray-800 text-white px-3 rounded-lg"
-              >
-                Generate
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Group ID</label>
-            <div className="flex gap-2 mt-1">
-              <input
-                type="text"
-                className="border rounded-lg p-2 flex-1"
-                placeholder="Enter or generate Group ID"
-                value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
-              />
-              <button
-                onClick={() => setGroupId(uuidv4())}
-                className="bg-gray-800 text-white px-3 rounded-lg"
-              >
-                Generate
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium">Leg:</label>
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={leg === "A"} onChange={() => setLeg("A")} />
-              <span>A</span>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={leg === "B"} onChange={() => setLeg("B")} />
-              <span>B</span>
-            </label>
-          </div>
-        </section>
-
-        <hr />
-
-        {/* Buttons */}
-        <div className="space-y-2">
-          <button
-            onClick={createAcsUser}
-            className="w-full py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-          >
-            1️⃣ Create ACS User
-          </button>
-
-          <button
-            onClick={initCallAgent}
-            disabled={!token}
-            className="w-full py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
-          >
-            2️⃣ Initialize Call Agent
-          </button>
-
-          <button
-            onClick={joinCall}
-            disabled={!callAgent || !groupId}
-            className="w-full py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60"
-          >
-            3️⃣ Join Video Call
-          </button>
-
-          <button
-            onClick={joinBot}
-            disabled={!groupId || !bridgeId}
-            className="w-full py-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60"
-          >
-            4️⃣ Add Bot (this leg)
-          </button>
-
-          {call && (
-            <button
-              onClick={hangUp}
-              className="w-full py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
-            >
-              🔚 Hang Up
-            </button>
-          )}
-        </div>
-
-        <p className="text-center text-gray-700 text-sm mt-3">
-          <b>Status:</b> {status}
-        </p>
-
-        <div className="text-xs text-gray-500 mt-4 space-y-1">
-          <p>🧩 Use same <b>Bridge ID</b> on both tabs.</p>
-          <p>🎚 Each user has a different <b>Group ID</b>.</p>
-          <p>🅰️ One tab = Leg A, 🅱️ Other tab = Leg B. Click “Add Bot” on both sides.</p>
+        {/* Remote Video (Echo Bot) */}
+        <div 
+          ref={remoteVideoRef} 
+          className="w-1/2 bg-black rounded-lg overflow-hidden border-2 border-blue-500 relative"
+        >
+           <span className="absolute top-2 left-2 text-white bg-black/50 px-2 rounded text-xs z-10">Echo Bot</span>
         </div>
       </div>
+
+      {/* Controls */}
+      <div className="flex gap-4">
+        {!isCallConnected ? (
+          <button 
+            onClick={startCall}
+            disabled={!callAgent}
+            className={`px-6 py-2 rounded text-white font-semibold ${callAgent ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+          >
+            {callAgent ? "Start Test Call (Echo Bot)" : "Initializing..."}
+          </button>
+        ) : (
+          <button 
+            onClick={endCall}
+            className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-semibold"
+          >
+            End Call
+          </button>
+        )}
+      </div>
+      
+      <p className="mt-4 text-sm text-gray-500">
+        Status: {callAgent ? "Agent Ready" : "Fetching Token..."} | UserID: {userId ? "Fetched" : "..."}
+      </p>
     </div>
   );
 }
+
+export default VideoCall
