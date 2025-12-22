@@ -120,9 +120,9 @@ export default function AuthForm({ onAuthSuccess }) {
       </form>
       <hr className="mt-12" />
 
-      {/* <CallPanel /> */}
+      <CallPanel />
       {/* <VideoCall /> */}
-      <BothCall />
+      {/* <BothCall /> */}
     </div>
   );
 }
