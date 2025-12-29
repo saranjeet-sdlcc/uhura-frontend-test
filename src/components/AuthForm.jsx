@@ -2,6 +2,7 @@ import { useState } from "react";
 import CallPanel from "./CallPanel";
 import VideoCall from "./VideoCall";
 import BothCall from "./BothCall";
+import NewCallPanel from "./NewCallPanel";
 
 export default function AuthForm({ onAuthSuccess }) {
   const [countryCode, setCountryCode] = useState("");
@@ -60,7 +61,7 @@ export default function AuthForm({ onAuthSuccess }) {
   return (
     // <div className="max-w-md mx-auto">
     <div>
-      <div className="mb-6">
+      {/* <div className="mb-6">
         <h2 className="text-xl font-semibold mb-2">Authenticate with OTP</h2>
         <p className="text-sm text-gray-600">
           Enter your country code, phone number, and OTP code to get JWT token
@@ -117,12 +118,13 @@ export default function AuthForm({ onAuthSuccess }) {
         >
           {loading ? "Verifying..." : "Verify OTP & Get Token"}
         </button>
-      </form>
+      </form> */}
       <hr className="mt-12" />
 
       <CallPanel />
       {/* <VideoCall /> */}
       {/* <BothCall /> */}
+      {/* <NewCallPanel /> */}
     </div>
   );
 }
