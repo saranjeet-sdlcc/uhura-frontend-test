@@ -253,7 +253,7 @@ const handleTypingIndicator = (isTyping) => {
         }
         if (selectedFiles.length === 1) {
           formData.append("media", selectedFiles[0]);
-          endpoint = "http://165.227.209.124:4002/chat/send-media";
+          endpoint = "http://localhost:4002/chat/send-media";
         } else {
           selectedFiles.forEach((file) => {
             formData.append("media", file);

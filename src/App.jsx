@@ -33,6 +33,8 @@ export default function App() {
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
+  const [activeFilter, setActiveFilter] = useState("inbox");
+
   // -------------------- GROUP chat state (fully separate) --------------------
   const [groupMessagesByGroup, setGroupMessagesByGroup] = useState({}); // { [groupId]: Message[] }
   const [selectedGroupId, setSelectedGroupId] = useState(null);
@@ -85,7 +87,7 @@ export default function App() {
           .then((res) => res.json())
           .then((data) => console.log("📱 Device token registered:", data))
           .catch((err) =>
-            console.error("❌ Device token registration error:", err)
+            console.error("❌ Device token registration error:", err),
           );
       }
     });
@@ -107,7 +109,6 @@ export default function App() {
       headers: { Authorization: `Bearer ${jwt}` },
     }).catch((err) => console.warn("Set online failed:", err));
 
-    
     // Uncomment to keep presence alive
     // const heartbeatInterval = setInterval(() => {
     //   fetch("http://localhost:4002/presence/heartbeat", {
@@ -154,7 +155,7 @@ export default function App() {
       // Final offline call
       navigator.sendBeacon(
         "http://localhost:4002/presence/offline",
-        new Blob([JSON.stringify({})], { type: "application/json" })
+        new Blob([JSON.stringify({})], { type: "application/json" }),
       );
     };
   }, [connected, jwt]);
@@ -206,10 +207,10 @@ export default function App() {
   const updateMessageById = (messageId, patch) => {
     // 1:1 only
     setMessages((prev) =>
-      prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+      prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m)),
     );
     setConversationMessages((prev) =>
-      prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m))
+      prev.map((m) => (m.messageId === messageId ? { ...m, ...patch } : m)),
     );
   };
 
@@ -218,7 +219,7 @@ export default function App() {
     setGroupMessagesByGroup((prev) => {
       const list = prev[groupId] || [];
       const updated = list.map((m) =>
-        m.messageId === messageId ? { ...m, ...patch } : m
+        m.messageId === messageId ? { ...m, ...patch } : m,
       );
       return { ...prev, [groupId]: updated };
     });
@@ -234,8 +235,10 @@ export default function App() {
         method: "GET",
         headers: { Authorization: `Bearer ${jwt}` },
       });
-      if (!chatRes.ok) throw new Error(`Chat negotiate failed: ${chatRes.status}`);
-      const { url: chatUrl, accessToken: chatAccessToken } = await chatRes.json();
+      if (!chatRes.ok)
+        throw new Error(`Chat negotiate failed: ${chatRes.status}`);
+      const { url: chatUrl, accessToken: chatAccessToken } =
+        await chatRes.json();
 
       const chatConnection = new signalR.HubConnectionBuilder()
         .withUrl(chatUrl, { accessTokenFactory: () => chatAccessToken })
@@ -271,7 +274,7 @@ export default function App() {
           return {
             ...prev,
             [msg.groupId]: list.map((m) =>
-              m.messageId === msg.messageId ? { ...m, ...msg } : m
+              m.messageId === msg.messageId ? { ...m, ...msg } : m,
             ),
           };
         });
@@ -289,29 +292,32 @@ export default function App() {
         });
       });
 
-      chatConnection.on("messageReceipt", ({ groupId, messageId, status, from }) => {
-        if (!groupId) return;
-        setGroupMessagesByGroup((prev) => {
-          const list = prev[groupId] || [];
-          const updated = list.map((m) =>
-            m.messageId === messageId
-              ? {
-                  ...m,
-                  status,
-                  deliveredTo:
-                    status === "delivered"
-                      ? [...(m.deliveredTo || []), from]
-                      : m.deliveredTo,
-                  readBy:
-                    status === "read"
-                      ? [...(m.readBy || []), from]
-                      : m.readBy,
-                }
-              : m
-          );
-          return { ...prev, [groupId]: updated };
-        });
-      });
+      chatConnection.on(
+        "messageReceipt",
+        ({ groupId, messageId, status, from }) => {
+          if (!groupId) return;
+          setGroupMessagesByGroup((prev) => {
+            const list = prev[groupId] || [];
+            const updated = list.map((m) =>
+              m.messageId === messageId
+                ? {
+                    ...m,
+                    status,
+                    deliveredTo:
+                      status === "delivered"
+                        ? [...(m.deliveredTo || []), from]
+                        : m.deliveredTo,
+                    readBy:
+                      status === "read"
+                        ? [...(m.readBy || []), from]
+                        : m.readBy,
+                  }
+                : m,
+            );
+            return { ...prev, [groupId]: updated };
+          });
+        },
+      );
 
       // Inside connectToSignalR function, after existing handlers:
 
@@ -325,7 +331,7 @@ export default function App() {
           "Online:",
           data.online,
           "Last seen:",
-          data.lastSeenAt
+          data.lastSeenAt,
         );
 
         setUserPresence((prev) => {
@@ -379,16 +385,39 @@ export default function App() {
   };
 
   // --------- 1:1 fetchers (unchanged) ----------
-  const fetchConversations = async () => {
+  // const fetchConversations = async (filter = activeFilter) => {
+  //   try {
+  //     setLoadingConversations(true);
+  //     // Add filterType to the query string
+  //     const res = await fetch(
+  //       `http://localhost:4002/chat/conversations?page=1&limit=20&filterType=${filter}`,
+  //       { headers: { Authorization: `Bearer ${jwt}` } },
+  //     );
+  //     const data = await res.json();
+  //     if (data.success) {
+  //       setConversations(data.conversations || []);
+  //     }
+  //   } catch (err) {
+  //     console.error("❌ Fetch conversations error:", err);
+  //   } finally {
+  //     setLoadingConversations(false);
+  //   }
+  // };
+
+
+  const fetchConversations = async (filter = activeFilter, search = "") => {
     try {
       setLoadingConversations(true);
+      // ✅ Now includes &searchTerm so the backend can run the bcrypt check
       const res = await fetch(
-        `http://localhost:4002/chat/conversations?page=1&limit=20`,
-        { headers: { Authorization: `Bearer ${jwt}` } }
+        `http://localhost:4002/chat/conversations?page=1&limit=20&filterType=${filter}&searchTerm=${search}`,
+        { headers: { Authorization: `Bearer ${jwt}` } },
       );
       const data = await res.json();
+      
       if (data.success) {
-        setConversations(data.conversations || []);
+        // If data.isLockedView is true, the child component will handle the UI switch
+        setConversations(data || []); 
       }
     } catch (err) {
       console.error("❌ Fetch conversations error:", err);
@@ -397,12 +426,28 @@ export default function App() {
     }
   };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const fetchConversationMessages = async (otherUserId) => {
     try {
       setLoadingMessages(true);
       const res = await fetch(
         `http://localhost:4002/chat/messages?otherUserId=${otherUserId}&page=1&limit=50`,
-        { headers: { Authorization: `Bearer ${jwt}` } }
+        { headers: { Authorization: `Bearer ${jwt}` } },
       );
       const data = await res.json();
       if (data.success) {
@@ -423,7 +468,7 @@ export default function App() {
       setLoadingGroupMessages(true);
       const res = await fetch(
         `http://localhost:4002/chat/groups/messages?groupId=${groupId}&page=1&limit=50`,
-        { headers: { Authorization: `Bearer ${jwt}` } }
+        { headers: { Authorization: `Bearer ${jwt}` } },
       );
       const data = await res.json();
       if (data.success) {
@@ -483,6 +528,8 @@ export default function App() {
     loadingConversations,
     selectedConversation,
     fetchConversations,
+    activeFilter,
+    setActiveFilter,
     fetchConversationMessages,
     userId,
     userPresence,
@@ -536,7 +583,8 @@ export default function App() {
       <div className="min-h-screen bg-gray-100 p-4">
         <div className="max-w-6xl mx-auto bg-white shadow p-6 rounded">
           <h1 className="text-2xl font-bold mb-4">
-            🔗 Chat &amp; Call Tester {callState !== "None" && `(📞 ${callState})`}
+            🔗 Chat &amp; Call Tester{" "}
+            {callState !== "None" && `(📞 ${callState})`}
           </h1>
 
           {!authData && !connected ? (
@@ -624,7 +672,9 @@ export default function App() {
                     selectedGroupId={selectedGroupId}
                     setSelectedGroupId={setSelectedGroupId}
                     groupMessages={
-                      selectedGroupId ? groupMessagesByGroup[selectedGroupId] || [] : []
+                      selectedGroupId
+                        ? groupMessagesByGroup[selectedGroupId] || []
+                        : []
                     }
                     setGroupMessagesForSelected={(updater) => {
                       if (!selectedGroupId) return;
@@ -669,7 +719,6 @@ export default function App() {
       {/* <Routes>
   <Route path="/groups/invite/:token/join" element={<JoinGroup jwt={jwt} />} />
 </Routes> */}
-
     </Router>
   );
 }

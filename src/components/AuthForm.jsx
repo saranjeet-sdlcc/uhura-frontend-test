@@ -61,12 +61,7 @@ export default function AuthForm({ onAuthSuccess }) {
   return (
     // <div className="max-w-md mx-auto">
     <div>
-      {/* <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Authenticate with OTP</h2>
-        <p className="text-sm text-gray-600">
-          Enter your country code, phone number, and OTP code to get JWT token
-        </p>
-      </div>
+     
 
       <form onSubmit  ={handleSubmit} className="space-y-4">
         <div>
@@ -118,12 +113,12 @@ export default function AuthForm({ onAuthSuccess }) {
         >
           {loading ? "Verifying..." : "Verify OTP & Get Token"}
         </button>
-      </form> */}
+      </form>
       <hr className="mt-12" />
 
-      <CallPanel />
+      {/* <CallPanel />  */}
       {/* <VideoCall /> */}
-      {/* <BothCall /> */}
+      <BothCall />
       {/* <NewCallPanel /> */}
     </div>
   );

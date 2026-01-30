@@ -1,3 +1,4 @@
+// -----------   STT on BACKEND   ---------------
 // import { CallClient } from "@azure/communication-calling";
 // import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 // import axios from "axios";
@@ -8,7 +9,6 @@
 // // --- Configuration ---
 
 // const BACKEND_URL = "http://localhost:4005";
-
 
 // // const BACKEND_URL = "http://192.168.1.119:4005";
 // // const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
@@ -841,7 +841,8 @@
 //   );
 // }
 
- 
+// ----------------STT on FRONTEND----------------
+
 import { CallClient } from "@azure/communication-calling";
 import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 import axios from "axios";
@@ -849,8 +850,8 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
 
-// const BACKEND_URL = "http://localhost:4005";
-const BACKEND_URL = "https://new-audio-translation.onrender.com";
+const BACKEND_URL = "http://localhost:4005";
+// const BACKEND_URL = "https://new-audio-translation.onrender.com";
 
 /* ===========================
    Languages
@@ -894,7 +895,6 @@ export default function CallPanel() {
 
   const [isMuted, setIsMuted] = useState(false);
 
-
   const [bridgeId, setBridgeId] = useState(null);
   const [translations, setTranslations] = useState([]);
 
@@ -927,7 +927,7 @@ export default function CallPanel() {
         ].slice(-20)
       );
 
-      speak(p.translatedText, p.targetLanguage);
+      speak(p.translatedText, p.targetLanguage); // frontend TTS
     });
 
     s.on("call_ended", cleanup);
@@ -1029,204 +1029,191 @@ export default function CallPanel() {
     setStatus("📴 Idle");
   }
 
-
   async function toggleMute() {
-  if (!call) return;
+    if (!call) return;
 
-  try {
-    if (isMuted) {
-      await call.unmute();
-      setIsMuted(false);
-      setStatus("🎤 Microphone ON");
-    } else {
-      await call.mute();
-      setIsMuted(true);
-      setStatus("🔇 Microphone MUTED");
+    try {
+      if (isMuted) {
+        await call.unmute();
+        setIsMuted(false);
+        setStatus("🎤 Microphone ON");
+      } else {
+        await call.mute();
+        setIsMuted(true);
+        setStatus("🔇 Microphone MUTED");
+      }
+    } catch (err) {
+      console.error("Mute toggle failed:", err);
     }
-  } catch (err) {
-    console.error("Mute toggle failed:", err);
   }
-}
-
-
-
-
 
   /* ===========================
      UI
   =========================== */
- return (
-  <div className="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6">
-    <div className="w-full max-w-lg bg-gray-800 rounded-2xl shadow-xl p-6 space-y-6">
-
-      {/* Header */}
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-purple-400">
-          🌍 Translated Audio Call
-        </h2>
-        <p className="text-sm text-gray-400 mt-1">
-          Frontend TTS · Backend Translation · ACS Muted
-        </p>
-      </div>
-
-      {/* Status */}
-      <div className="bg-gray-700 rounded-lg p-3 text-center">
-        <span className="text-sm text-gray-300">Status</span>
-        <div className="text-lg font-semibold">{status}</div>
-      </div>
-
-      {/* Auth */}
-      <div className="space-y-3">
-        <input
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-          placeholder="JWT Token"
-          value={jwt}
-          onChange={(e) => setJwt(e.target.value)}
-        />
-      </div>
-
-      {/* User Info */}
-      <div className="bg-gray-700 rounded-lg p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-purple-300">
-          Your Identity
-        </h3>
-
-        <div className="flex gap-2">
-          <input
-            className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm"
-            placeholder="My User ID"
-            value={myUserId}
-            onChange={(e) => setMyUserId(e.target.value)}
-          />
-          <button
-            onClick={() => setMyUserId(uuidv4())}
-            className="px-3 rounded-lg bg-purple-600 hover:bg-purple-700 transition"
-          >
-            🎲
-          </button>
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6">
+      <div className="w-full max-w-lg bg-gray-800 rounded-2xl shadow-xl p-6 space-y-6">
+        {/* Header */}
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-purple-400">
+            🌍 Translated Audio Call
+          </h2>
+          <p className="text-sm text-gray-400 mt-1">
+            Frontend TTS · Backend Translation · ACS Muted
+          </p>
         </div>
 
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm"
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.label}
-            </option>
-          ))}
-        </select>
-      </div>
+        {/* Status */}
+        <div className="bg-gray-700 rounded-lg p-3 text-center">
+          <span className="text-sm text-gray-300">Status</span>
+          <div className="text-lg font-semibold">{status}</div>
+        </div>
 
-      {/* Call Actions */}
-      {!call && !incomingCall && (
+        {/* Auth */}
+        <div className="space-y-3">
+          <input
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            placeholder="JWT Token"
+            value={jwt}
+            onChange={(e) => setJwt(e.target.value)}
+          />
+        </div>
+
+        {/* User Info */}
         <div className="bg-gray-700 rounded-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-green-300">
-            Start a Call
+          <h3 className="text-sm font-semibold text-purple-300">
+            Your Identity
           </h3>
 
-          <input
-            className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm"
-            placeholder="Target User ID"
-            value={targetUserId}
-            onChange={(e) => setTargetUserId(e.target.value)}
-          />
-
-          <button
-            onClick={initiateCall}
-            className="w-full py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold transition"
-          >
-            📞 Call User
-          </button>
-        </div>
-      )}
-
-      {/* Incoming Call */}
-      {incomingCall && (
-        <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg p-4 space-y-3">
-          <h3 className="text-lg font-bold text-center">
-            📞 Incoming Call
-          </h3>
-
-          <div className="flex gap-3">
+          <div className="flex gap-2">
+            <input
+              className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm"
+              placeholder="My User ID"
+              value={myUserId}
+              onChange={(e) => setMyUserId(e.target.value)}
+            />
             <button
-              onClick={acceptCall}
-              className="flex-1 py-2 rounded-lg bg-green-500 hover:bg-green-600 font-semibold"
+              onClick={() => setMyUserId(uuidv4())}
+              className="px-3 rounded-lg bg-purple-600 hover:bg-purple-700 transition"
             >
-              Accept
-            </button>
-            <button
-              onClick={rejectCall}
-              className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 font-semibold"
-            >
-              Reject
+              🎲
             </button>
           </div>
-        </div>
-      )}
 
-      {/* Active Call */}
-     {call && (
-  <div className="bg-gray-700 rounded-lg p-4 space-y-3">
-    <h3 className="text-sm font-semibold text-red-300">
-      Call Controls
-    </h3>
-
-    <div className="flex gap-3">
-      <button
-        onClick={toggleMute}
-        className={`flex-1 py-2 rounded-lg font-semibold transition ${
-          isMuted
-            ? "bg-yellow-500 hover:bg-yellow-600"
-            : "bg-blue-600 hover:bg-blue-700"
-        }`}
-      >
-        {isMuted ? "🎤 Unmute" : "🔇 Mute"}
-      </button>
-
-      <button
-        onClick={endCall}
-        className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
-      >
-        End Call
-      </button>
-    </div>
-  </div>
-)}
-
-
-      {/* Translation Log */}
-      <div className="bg-gray-700 rounded-lg overflow-hidden">
-        <div className="bg-gray-600 px-4 py-2 text-sm font-semibold">
-          💬 Live Translation
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="max-h-60 overflow-y-auto p-4 space-y-3">
-          {translations.length === 0 && (
-            <p className="text-sm text-gray-400 text-center">
-              Translated text will appear here…
-            </p>
-          )}
+        {/* Call Actions */}
+        {!call && !incomingCall && (
+          <div className="bg-gray-700 rounded-lg p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-green-300">
+              Start a Call
+            </h3>
 
-          {translations.map((t) => (
-            <div
-              key={t.id}
-              className="bg-gray-800 rounded-lg p-3 border-l-4 border-purple-500"
+            <input
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm"
+              placeholder="Target User ID"
+              value={targetUserId}
+              onChange={(e) => setTargetUserId(e.target.value)}
+            />
+
+            <button
+              onClick={initiateCall}
+              className="w-full py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold transition"
             >
-              <div className="text-white font-medium">
-                {t.translated}
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                {t.original} ({t.from} → {t.to})
-              </div>
+              📞 Call User
+            </button>
+          </div>
+        )}
+
+        {/* Incoming Call */}
+        {incomingCall && (
+          <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg p-4 space-y-3">
+            <h3 className="text-lg font-bold text-center">📞 Incoming Call</h3>
+
+            <div className="flex gap-3">
+              <button
+                onClick={acceptCall}
+                className="flex-1 py-2 rounded-lg bg-green-500 hover:bg-green-600 font-semibold"
+              >
+                Accept
+              </button>
+              <button
+                onClick={rejectCall}
+                className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 font-semibold"
+              >
+                Reject
+              </button>
             </div>
-          ))}
+          </div>
+        )}
+
+        {/* Active Call */}
+        {call && (
+          <div className="bg-gray-700 rounded-lg p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-red-300">
+              Call Controls
+            </h3>
+
+            <div className="flex gap-3">
+              <button
+                onClick={toggleMute}
+                className={`flex-1 py-2 rounded-lg font-semibold transition ${
+                  isMuted
+                    ? "bg-yellow-500 hover:bg-yellow-600"
+                    : "bg-blue-600 hover:bg-blue-700"
+                }`}
+              >
+                {isMuted ? "🎤 Unmute" : "🔇 Mute"}
+              </button>
+
+              <button
+                onClick={endCall}
+                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+              >
+                End Call
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Translation Log */}
+        <div className="bg-gray-700 rounded-lg overflow-hidden">
+          <div className="bg-gray-600 px-4 py-2 text-sm font-semibold">
+            💬 Live Translation
+          </div>
+
+          <div className="max-h-60 overflow-y-auto p-4 space-y-3">
+            {translations.length === 0 && (
+              <p className="text-sm text-gray-400 text-center">
+                Translated text will appear here…
+              </p>
+            )}
+
+            {translations.map((t) => (
+              <div
+                key={t.id}
+                className="bg-gray-800 rounded-lg p-3 border-l-4 border-purple-500"
+              >
+                <div className="text-white font-medium">{t.translated}</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {t.original} ({t.from} → {t.to})
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-
     </div>
-  </div>
-);
-
+  );
 }

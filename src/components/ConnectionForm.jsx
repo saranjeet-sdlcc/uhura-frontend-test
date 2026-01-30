@@ -1,4 +1,6 @@
 export default function ConnectionForm({ jwt, setJwt, connectToSignalR, authData }) {
+
+
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text).then(() => {
       alert(`${label} copied to clipboard!`);
@@ -89,6 +91,12 @@ export default function ConnectionForm({ jwt, setJwt, connectToSignalR, authData
         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
       >
         Connect to SignalR
+      </button>
+
+      <button className="bg-rose-300 px-4 py-2 rounded ml-2" onClick={() => {
+        localStorage.setItem("jwtToken", jwt)
+      }}>
+        Save jwt in local storage
       </button>
     </>
   );
