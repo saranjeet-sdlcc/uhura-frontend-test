@@ -13,7 +13,7 @@ export default function ChatPanel({
   setMessage,
   selectedFiles,
   setSelectedFiles,
-  uploadingMedia,
+  uploadingMedia, 
   setUploadingMedia,
   showFilePicker,
   setShowFilePicker,
