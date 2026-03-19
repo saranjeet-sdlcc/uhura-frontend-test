@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // --- Configuration ---
 const AUDIO_BACKEND_URL = "http://192.168.1.46:4005";
-const VIDEO_BACKEND_URL = "http://localhost:4009/api";
+const VIDEO_BACKEND_URL = "http://192.168.1.46:4009/api";
 const HUB_NAME = "audioHub";
 
 const SUPPORTED_LANGUAGES = [
@@ -20,7 +20,6 @@ const SUPPORTED_LANGUAGES = [
   { code: "hi-IN", name: "Hindi (India)", flag: "🇮🇳" },
   { code: "fr-FR", name: "French (France)", flag: "🇫🇷" },
   { code: "es-ES", name: "Spanish (Spain)", flag: "🇪🇸" },
-  // ... add your other languages here
 ];
 
 export default function TranslatedVideoCall() {
@@ -62,7 +61,6 @@ export default function TranslatedVideoCall() {
   // 1. SIGNALING SETUP (Socket.io + SignalR)
   // ==========================================
 
-  // Setup Socket.io (Audio Backend)
   useEffect(() => {
     const socket = io(AUDIO_BACKEND_URL);
     socketRef.current = socket;
@@ -82,8 +80,11 @@ export default function TranslatedVideoCall() {
     });
 
     socket.on("call_accepted", (data) => {
-      console.log("✅ Audio Call accepted:", data);
+      console.log("✅ Audio Call accepted by callee:", data);
       setCalleeLanguage(data.calleeLanguage);
+      // FIX 1: Ensure caller UI transitions to "inCall"
+      setCallState("inCall");
+      setStatus("In Call 🟢");
     });
 
     socket.on("call_rejected", () => cleanupCallState(true));
@@ -93,14 +94,11 @@ export default function TranslatedVideoCall() {
     return () => socket.disconnect();
   }, []);
 
-  // Connect user to SignalR (Video) & Socket (Audio) rooms
   const connectUser = async () => {
     if (!myUserId) return alert("Please enter User ID");
 
-    // 1. Join Audio Socket Room
     if (socketRef.current) socketRef.current.emit("join_user_room", myUserId);
 
-    // 2. Connect to Video SignalR
     try {
       setStatus("Connecting to Video SignalR...");
       const response = await axios.post(
@@ -157,25 +155,63 @@ export default function TranslatedVideoCall() {
     return localVideoStream;
   };
 
+  // FIX 2: Check for existing streams before listening for new ones
   const subscribeToRemoteVideo = (remoteParticipant) => {
-    remoteParticipant.on("videoStreamsUpdated", async (e) => {
-      for (const stream of e.added) {
-        if (stream.isAvailable) {
-          const renderer = new VideoStreamRenderer(stream);
-          remoteRendererRef.current = renderer;
-          const view = await renderer.createView();
-          if (remoteVideoContainerRef.current) {
-            remoteVideoContainerRef.current.innerHTML = "";
-            remoteVideoContainerRef.current.appendChild(view.target);
-          }
+    const renderStream = async (stream) => {
+      if (stream.isAvailable) {
+        const renderer = new VideoStreamRenderer(stream);
+        remoteRendererRef.current = renderer;
+        const view = await renderer.createView();
+        if (remoteVideoContainerRef.current) {
+          remoteVideoContainerRef.current.innerHTML = "";
+          remoteVideoContainerRef.current.appendChild(view.target);
         }
       }
-      for (const stream of e.removed) {
+    };
+
+    // 1. Render streams that already exist when we join
+    remoteParticipant.videoStreams.forEach((stream) => {
+      renderStream(stream);
+    });
+
+    // 2. Listen for streams added or removed during the call
+    remoteParticipant.on("videoStreamsUpdated", (e) => {
+      e.added.forEach((stream) => {
+        renderStream(stream);
+      });
+      e.removed.forEach((stream) => {
         if (remoteRendererRef.current) {
           remoteRendererRef.current.dispose();
+          remoteRendererRef.current = null;
+        }
+        if (remoteVideoContainerRef.current) {
           remoteVideoContainerRef.current.innerHTML = "";
         }
+      });
+    });
+  };
+
+  // Setup listeners for the Call object itself
+  const setupCallListeners = (call) => {
+    call.on("stateChanged", () => {
+      if (call.state === "Connected") {
+        setCallState("inCall");
+        setStatus("In Call 🟢");
+      } else if (call.state === "Disconnected") {
+        cleanupCallState(true);
       }
+    });
+
+    // Handle participants who are already in the call
+    call.remoteParticipants.forEach((participant) => {
+      subscribeToRemoteVideo(participant);
+    });
+
+    // Handle participants who join after us
+    call.on("remoteParticipantsUpdated", (e) => {
+      e.added.forEach((participant) => {
+        subscribeToRemoteVideo(participant);
+      });
     });
   };
 
@@ -193,7 +229,6 @@ export default function TranslatedVideoCall() {
     setSubtitles([]);
 
     try {
-      // 1. Initiate BOTH APIs simultaneously
       const [audioRes, videoRes] = await Promise.all([
         axios.post(
           `${AUDIO_BACKEND_URL}/call/initiate`,
@@ -213,24 +248,24 @@ export default function TranslatedVideoCall() {
       setAudioCallInfo(audioData);
       setVideoCallInfo(videoData);
 
-      // 2. Setup Audio Call (MIC ON, VIDEO OFF)
+      // Setup Audio Call (MIC ON, VIDEO OFF)
       const audioClient = new CallClient();
       const audioAgent = await audioClient.createCallAgent(
         new AzureCommunicationTokenCredential(audioData.acsUser.token),
       );
       const audioCall = audioAgent.join(
         { groupId: audioData.groupId },
-        { audioOptions: { muted: false } }, // Audio travels here
+        { audioOptions: { muted: false } },
       );
       audioCallRef.current = audioCall;
 
-      // 3. Setup Video Call (MIC OFF, VIDEO ON)
+      // Setup Video Call (MIC OFF, VIDEO ON)
       const videoClient = new CallClient();
       const videoAgent = await videoClient.createCallAgent(
         new AzureCommunicationTokenCredential(videoData.acsToken),
       );
       const videoDm = await videoClient.getDeviceManager();
-      await videoDm.askDevicePermission({ video: true, audio: true }); // Ask both once
+      await videoDm.askDevicePermission({ video: true, audio: true });
 
       const localStream = await startLocalVideo(videoDm);
 
@@ -238,13 +273,11 @@ export default function TranslatedVideoCall() {
         { groupId: videoData.acsGroupCallId },
         {
           videoOptions: { localVideoStreams: [localStream] },
-          audioOptions: { muted: true }, // MUTE THIS SO RAW VOICE DOESN'T LEAK
+          audioOptions: { muted: true },
         },
       );
 
-      videoCall.on("remoteParticipantsUpdated", (e) => {
-        e.added.forEach(subscribeToRemoteVideo);
-      });
+      setupCallListeners(videoCall);
       videoCallRef.current = videoCall;
 
       setCallState("ringing");
@@ -266,7 +299,6 @@ export default function TranslatedVideoCall() {
     setStatus("Accepting dual-call...");
 
     try {
-      // 1. Accept BOTH APIs
       const [audioRes, videoRes] = await Promise.all([
         axios.post(
           `${AUDIO_BACKEND_URL}/call/accept`,
@@ -285,7 +317,7 @@ export default function TranslatedVideoCall() {
       setAudioCallInfo(audioData);
       setVideoCallInfo(videoData);
 
-      // 2. Join Audio Call (MIC ON, VIDEO OFF)
+      // Join Audio Call
       const audioClient = new CallClient();
       const audioAgent = await audioClient.createCallAgent(
         new AzureCommunicationTokenCredential(audioData.acsUser.token),
@@ -296,7 +328,7 @@ export default function TranslatedVideoCall() {
       );
       audioCallRef.current = audioCall;
 
-      // 3. Join Video Call (MIC OFF, VIDEO ON)
+      // Join Video Call
       const videoClient = new CallClient();
       const videoAgent = await videoClient.createCallAgent(
         new AzureCommunicationTokenCredential(videoData.acsToken),
@@ -309,16 +341,12 @@ export default function TranslatedVideoCall() {
         { groupId: videoData.acsGroupCallId },
         {
           videoOptions: { localVideoStreams: [localStream] },
-          audioOptions: { muted: true }, // MUTED!
+          audioOptions: { muted: true },
         },
       );
 
-      videoCall.on("remoteParticipantsUpdated", (e) => {
-        e.added.forEach(subscribeToRemoteVideo);
-      });
+      setupCallListeners(videoCall);
       videoCallRef.current = videoCall;
-
-      setStatus("In Call 🟢");
     } catch (err) {
       console.error("Accept failed:", err);
       cleanupCallState(true);
@@ -326,13 +354,11 @@ export default function TranslatedVideoCall() {
   };
 
   const handleHangUp = async () => {
-    // Hangup ACS Calls
     if (audioCallRef.current)
       await audioCallRef.current.hangUp().catch(console.error);
     if (videoCallRef.current)
       await videoCallRef.current.hangUp().catch(console.error);
 
-    // Notify APIs
     if (audioCallInfo) {
       axios
         .post(
@@ -382,7 +408,6 @@ export default function TranslatedVideoCall() {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4 font-sans flex flex-col items-center">
       <div className="w-full max-w-5xl space-y-4">
-        {/* Header / Connection Panel */}
         <div className="bg-gray-800 rounded-lg shadow-lg p-4 flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-purple-400">
@@ -414,7 +439,6 @@ export default function TranslatedVideoCall() {
           )}
         </div>
 
-        {/* Call Controls (When Idle) */}
         {isSignaledConnected && callState === "idle" && (
           <div className="bg-gray-800 p-6 rounded-lg grid grid-cols-2 gap-4">
             <div>
@@ -454,7 +478,6 @@ export default function TranslatedVideoCall() {
           </div>
         )}
 
-        {/* Incoming Call Prompt */}
         {callState === "incoming" && (
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-lg text-center shadow-2xl">
             <h2 className="text-2xl font-bold mb-2">
@@ -479,7 +502,6 @@ export default function TranslatedVideoCall() {
             </div>
 
             <div className="flex justify-center gap-4">
-              {/* Disable accept until both socket events have fired */}
               <button
                 onClick={handleAccept}
                 disabled={!incomingAudioData || !incomingVideoData}
@@ -497,14 +519,12 @@ export default function TranslatedVideoCall() {
           </div>
         )}
 
-        {/* Active Call UI */}
         {(callState === "inCall" ||
           callState === "ringing" ||
           callState === "initiating") && (
           <div className="grid grid-cols-3 gap-4 h-[600px]">
-            {/* Video Area (Spans 2 columns) */}
             <div className="col-span-2 bg-black rounded-lg relative overflow-hidden shadow-lg border border-gray-700">
-              {/* Remote Video */}
+              {/* Remote Video Container */}
               <div
                 ref={remoteVideoContainerRef}
                 className="w-full h-full flex items-center justify-center bg-gray-900"
@@ -516,7 +536,7 @@ export default function TranslatedVideoCall() {
                 </span>
               </div>
 
-              {/* Local Video (PiP) */}
+              {/* Local Video Container */}
               <div className="absolute bottom-4 right-4 w-48 h-36 bg-gray-800 rounded border-2 border-gray-600 overflow-hidden z-10">
                 <div
                   ref={localVideoContainerRef}
@@ -526,7 +546,6 @@ export default function TranslatedVideoCall() {
                 </div>
               </div>
 
-              {/* Call End Button Overlay */}
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
                 <button
                   onClick={handleHangUp}
@@ -537,7 +556,6 @@ export default function TranslatedVideoCall() {
               </div>
             </div>
 
-            {/* Subtitles Area (1 column) */}
             <div className="col-span-1 bg-gray-800 rounded-lg flex flex-col border border-gray-700 overflow-hidden">
               <div className="bg-gray-700 p-3 text-center font-bold text-sm">
                 💬 Live Subtitles
