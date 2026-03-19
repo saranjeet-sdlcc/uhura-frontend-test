@@ -1,3 +1,7 @@
+// const BACKEND_URL = "http://localhost:4005";
+// const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
+// const BACKEND_URL = "http://192.168.1.117:8080";
+
 // -----------   STT on BACKEND   ---------------
 import { CallClient } from "@azure/communication-calling";
 import { AzureCommunicationTokenCredential } from "@azure/communication-common";
@@ -8,11 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // --- Configuration ---
 
-const BACKEND_URL = "http://localhost:4005";
-
-// const BACKEND_URL = "http://192.168.1.119:4005";
-// const BACKEND_URL = "https://uhura-h4aeb.ondigitalocean.app";
-// const BACKEND_URL = "http://192.168.1.117:8080";
+const BACKEND_URL = "http://192.168.1.46:4005";
 
 // Supported Languages
 const SUPPORTED_LANGUAGES = [
@@ -84,7 +84,7 @@ export default function CallPanel() {
         "🔴 connect_error (ngrok):",
         err,
         err.message,
-        err.description
+        err.description,
       );
       setStatus(`Connection error: ${err.message || "unknown"}`);
     });
@@ -105,7 +105,7 @@ export default function CallPanel() {
             targetLanguage: data.targetLanguage,
             timestamp: data.timestamp,
           },
-        ].slice(-20)
+        ].slice(-20),
       ); // Keep only last 20 subtitles
     });
 
@@ -114,12 +114,12 @@ export default function CallPanel() {
       console.log("📞 Incoming call received:", data);
       setIncomingCall(data);
       const callerLang = SUPPORTED_LANGUAGES.find(
-        (l) => l.code === data.callerLanguage
+        (l) => l.code === data.callerLanguage,
       );
       setStatus(
         `📞 Incoming call from ${data.callerName || data.callerUserId} (${
           callerLang?.flag
-        } ${callerLang?.name})`
+        } ${callerLang?.name})`,
       );
     });
 
@@ -128,12 +128,12 @@ export default function CallPanel() {
       console.log("✅ Call accepted:", data);
       setCalleeLanguage(data.calleeLanguage);
       const calleeLang = SUPPORTED_LANGUAGES.find(
-        (l) => l.code === data.calleeLanguage
+        (l) => l.code === data.calleeLanguage,
       );
       setStatus(
         `✅ Call connected with ${data.calleeName || data.calleeUserId} (${
           calleeLang?.flag
-        } ${calleeLang?.name})`
+        } ${calleeLang?.name})`,
       );
 
       // Start call timer
@@ -262,7 +262,7 @@ export default function CallPanel() {
     try {
       const newCall = agent.join(
         { groupId },
-        { audioOptions: { muted: false } }
+        { audioOptions: { muted: false } },
       );
 
       // Ensure speaker is selected
@@ -319,7 +319,7 @@ export default function CallPanel() {
           headers: {
             Authorization: `Bearer ${jwtToken}`, // my user id
           },
-        }
+        },
       );
 
       const { callId, acsUser, groupId, bridgeId } = res.data;
@@ -366,7 +366,7 @@ export default function CallPanel() {
           headers: {
             Authorization: `Bearer ${jwtToken}`,
           },
-        }
+        },
       );
 
       const { callId, acsUser, groupId, bridgeId, callerLanguage } = res.data;
@@ -384,10 +384,10 @@ export default function CallPanel() {
 
       const myLang = SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage);
       const callerLang = SUPPORTED_LANGUAGES.find(
-        (l) => l.code === callerLanguage
+        (l) => l.code === callerLanguage,
       );
       setStatus(
-        `✅ Connected (You: ${myLang?.flag} ${myLang?.name}, Caller: ${callerLang?.flag} ${callerLang?.name})`
+        `✅ Connected (You: ${myLang?.flag} ${myLang?.name}, Caller: ${callerLang?.flag} ${callerLang?.name})`,
       );
 
       // Start timer
@@ -420,7 +420,7 @@ export default function CallPanel() {
           headers: {
             Authorization: `Bearer ${jwtToken}`,
           },
-        }
+        },
       );
 
       setIncomingCall(null);
@@ -451,7 +451,7 @@ export default function CallPanel() {
           headers: {
             Authorization: `Bearer ${jwtToken}`,
           },
-        }
+        },
       );
 
       // Hangup ACS call
@@ -490,7 +490,7 @@ export default function CallPanel() {
           headers: {
             Authorization: `Bearer ${jwtToken}`,
           },
-        }
+        },
       );
 
       // Hangup ACS call
@@ -646,13 +646,13 @@ export default function CallPanel() {
                 Speaking:{" "}
                 {
                   SUPPORTED_LANGUAGES.find(
-                    (l) => l.code === incomingCall.callerLanguage
+                    (l) => l.code === incomingCall.callerLanguage,
                   )?.flag
                 }{" "}
                 <b>
                   {
                     SUPPORTED_LANGUAGES.find(
-                      (l) => l.code === incomingCall.callerLanguage
+                      (l) => l.code === incomingCall.callerLanguage,
                     )?.name
                   }
                 </b>
@@ -730,7 +730,7 @@ export default function CallPanel() {
                     <b>
                       {
                         SUPPORTED_LANGUAGES.find(
-                          (l) => l.code === calleeLanguage
+                          (l) => l.code === calleeLanguage,
                         )?.name
                       }
                     </b>
@@ -775,7 +775,7 @@ export default function CallPanel() {
                         <span className="px-2 py-1 bg-blue-600/30 rounded text-blue-300">
                           {
                             SUPPORTED_LANGUAGES.find(
-                              (l) => l.code === subtitle.sourceLanguage
+                              (l) => l.code === subtitle.sourceLanguage,
                             )?.flag
                           }{" "}
                           {subtitle.sourceLanguage}
@@ -784,7 +784,7 @@ export default function CallPanel() {
                         <span className="px-2 py-1 bg-green-600/30 rounded text-green-300">
                           {
                             SUPPORTED_LANGUAGES.find(
-                              (l) => l.code === subtitle.targetLanguage
+                              (l) => l.code === subtitle.targetLanguage,
                             )?.flag
                           }{" "}
                           {subtitle.targetLanguage}

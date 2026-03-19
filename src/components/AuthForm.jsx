@@ -3,6 +3,7 @@ import CallPanel from "./CallPanel";
 import VideoCall from "./VideoCall";
 import BothCall from "./BothCall";
 import NewCallPanel from "./NewCallPanel";
+import TranslatedVideoCall from "./TranslatedVideoCall";
 
 export default function AuthForm({ onAuthSuccess }) {
   const [countryCode, setCountryCode] = useState("");
@@ -24,7 +25,7 @@ export default function AuthForm({ onAuthSuccess }) {
 
     try {
       const response = await fetch(
-        "http://localhost:4000/api/auth/verify-otp",
+        "https://uhura-gateaway.azure-api.net/auth/verify-otp",
         {
           method: "POST",
           headers: {
@@ -116,7 +117,8 @@ export default function AuthForm({ onAuthSuccess }) {
       </form>
       <hr className="mt-12" />
 
-      <CallPanel /> 
+      {/* <CallPanel />  */}
+      <TranslatedVideoCall />
       {/* <VideoCall /> */}
       {/* <BothCall /> */}
       {/* <NewCallPanel /> */}

@@ -759,7 +759,7 @@
 
 // export default BothCall;
 
-// ----------------------> Video call <----------------------
+// ----------------------> Normal Video call <----------------------
 // import { CallClient, VideoStreamRenderer, LocalVideoStream } from "@azure/communication-calling";
 // import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 // import * as signalR from "@microsoft/signalr";
@@ -792,8 +792,7 @@
 //   const remoteRendererRef = useRef(null);
 //   const deviceManagerRef = useRef(null);
 
-//   const API_BASE_URL = "http://localhost:4005/api";
-//   // const API_BASE_URL = "http://192.168.1.52:4009/api";
+//   const API_BASE_URL = "http://localhost:4009/api";
 //   const HUB_NAME = "audioHub";
 
 //   // Add log
@@ -1611,9 +1610,8 @@ const firebaseConfig = {
   projectId: "uhura-c399e",
   storageBucket: "uhura-c399e.firebasestorage.app",
   messagingSenderId: "423562755233",
-  appId: "1:423562755233:web:a6b7afc6e0857f60da44e0"
+  appId: "1:423562755233:web:a6b7afc6e0857f60da44e0",
 };
-
 
 // Initialize Firebase outside the component to prevent re-initialization
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -1662,15 +1660,13 @@ const BothCall = () => {
 
         // Generate Token (Replace YOUR_VAPID_KEY with your Firebase Web Push Cert key)
         const token = await getToken(messaging, {
-          vapidKey: "BBdaMkAbh_G35VAqIhHoSRFBiSFJLhHZthwD_-s_qqNYho-_e6Eu7nydpVcdhF9IPAoSxtUZXTVNeMg5Y8Lxx7g",
+          vapidKey:
+            "BBdaMkAbh_G35VAqIhHoSRFBiSFJLhHZthwD_-s_qqNYho-_e6Eu7nydpVcdhF9IPAoSxtUZXTVNeMg5Y8Lxx7g",
         });
 
         if (token) {
           setFcmToken(token);
-          addLog(
-            `📱 FCM Token Generated: ${token}`,
-            "success",
-          );
+          addLog(`📱 FCM Token Generated: ${token}`, "success");
 
           // ⚠️ IMPORTANT: You must save this token to your backend DeviceToken collection!
           // Uncomment and adjust this to point to your actual endpoint
