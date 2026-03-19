@@ -13,7 +13,7 @@ import CallPanel from "./components/CallPanel";
 import NotificationPanel from "./components/NotificationPanel";
 import GroupChatTest from "./components/GroupChat"; // ✅ group chat tester
 import JoinGroup from "./components/JoinGroup"; // ✅ group invite route
-import { fetchFcmToken } from "./components/firebase";
+// import { fetchFcmToken } from "./components/firebase";
 
 import "./App.css";
 
@@ -65,33 +65,33 @@ export default function App() {
   const fileInputRef = useRef(null);
 
   // 🔔 Register FCM Token when logged in
-  useEffect(() => {
-    if (!jwt || !userId) return;
+  // useEffect(() => {
+  //   if (!jwt || !userId) return;
 
-    fetchFcmToken().then((token) => {
-      if (token) {
-        console.log("✅ Got FCM Token:", token);
+  //   fetchFcmToken().then((token) => {
+  //     if (token) {
+  //       console.log("✅ Got FCM Token:", token);
 
-        fetch("http://localhost:4003/device-tokens/register", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${jwt}`,
-          },
-          body: JSON.stringify({
-            userId,
-            token,
-            platform: "web",
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => console.log("📱 Device token registered:", data))
-          .catch((err) =>
-            console.error("❌ Device token registration error:", err),
-          );
-      }
-    });
-  }, [jwt, userId]);
+  //       fetch("http://localhost:4003/device-tokens/register", {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${jwt}`,
+  //         },
+  //         body: JSON.stringify({
+  //           userId,
+  //           token,
+  //           platform: "web",
+  //         }),
+  //       })
+  //         .then((res) => res.json())
+  //         .then((data) => console.log("📱 Device token registered:", data))
+  //         .catch((err) =>
+  //           console.error("❌ Device token registration error:", err),
+  //         );
+  //     }
+  //   });
+  // }, [jwt, userId]);
 
   // Scroll to bottom on new 1:1 messages
   useEffect(() => {
